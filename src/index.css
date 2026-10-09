@@ -1,0 +1,89 @@
+@import "tailwindcss";
+
+@theme {
+  --color-deep-green: #245C43;
+  --color-sage-green: #8FAF91;
+  --color-cream: #F7F5EF;
+  --color-light-green: #E8F1E7;
+  --color-earth-brown: #9A7653;
+  --color-amber-warning: #E5A93D;
+  --color-soft-red: #D96B5F;
+  --color-dark-text: #17382B;
+
+  --font-display: 'Outfit', 'Noto Sans Gujarati', 'Noto Sans Devanagari', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-sans: 'Plus Jakarta Sans', 'Noto Sans Gujarati', 'Noto Sans Devanagari', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+:root {
+  --deep-green: #245C43;
+  --sage-green: #8FAF91;
+  --cream: #F7F5EF;
+  --light-green: #E8F1E7;
+  --earth-brown: #9A7653;
+  --amber-warning: #E5A93D;
+  --soft-red: #D96B5F;
+  --dark-text: #17382B;
+}
+
+body {
+  background-color: #F7F5EF;
+  color: #17382B;
+  font-family: 'Plus Jakarta Sans', 'Noto Sans Gujarati', 'Noto Sans Devanagari', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Subtle organic pulse animations */
+@keyframes pulseLine {
+  0% {
+    stroke-dashoffset: 120;
+  }
+  50% {
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dashoffset: -120;
+  }
+}
+
+.animate-pulse-line {
+  stroke-dasharray: 60;
+  animation: pulseLine 2.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes floatGentle {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+.animate-float-slow {
+  animation: floatGentle 5s ease-in-out infinite;
+}
+
+.animate-float-delayed {
+  animation: floatGentle 5s ease-in-out 2.5s infinite;
+}
+
+/* Custom scrollbar for clean dashboard view */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F7F5EF;
+}
+::-webkit-scrollbar-thumb {
+  background: #8FAF91;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #245C43;
+}
+
+

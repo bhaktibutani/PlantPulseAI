@@ -1,0 +1,6 @@
+{
+  "name": "PlantPulse AI",
+  "description": "Check the Pulse. Understand the Plant. Grow Better. AI-powered plant and farming assistant.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
