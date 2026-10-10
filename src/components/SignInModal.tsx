@@ -29,7 +29,7 @@ export const SignInModal: React.FC<SignInModalProps> = ({
     setError(null);
 
     if (!email.trim() || !password) {
-      setError('Please provide email and password.');
+      setError(t.extra.authEmailInvalid);
       return;
     }
 
@@ -46,7 +46,7 @@ export const SignInModal: React.FC<SignInModalProps> = ({
 
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to sign in.');
+        throw new Error(t.extra.authInvalidCredentials);
       }
 
       if (data.token) {
@@ -55,7 +55,7 @@ export const SignInModal: React.FC<SignInModalProps> = ({
 
       onSuccess(data.user, data.token);
     } catch (err: any) {
-      setError(err.message || 'Invalid email or password.');
+      setError(err instanceof TypeError ? t.extra.authConnectionError : (err.message || t.extra.authInvalidCredentials));
     } finally {
       setIsLoading(false);
     }
@@ -82,7 +82,7 @@ export const SignInModal: React.FC<SignInModalProps> = ({
               {t.signIn}
             </h3>
             <p className="text-xs text-[#546b5e] mt-1">
-              Sign in with your verified MySQL credentials to access your dashboard.
+              {t.extra.signInDescription}
             </p>
           </div>
 
@@ -95,7 +95,7 @@ export const SignInModal: React.FC<SignInModalProps> = ({
 
           <div className="space-y-1 text-left">
             <label className="text-xs font-semibold text-[#245C43]">
-              Email Address
+              {t.extra.emailAddressLabel}
             </label>
             <div className="relative">
               <Mail className="w-4 h-4 text-[#8FAF91] absolute left-3 top-3" />
@@ -104,7 +104,7 @@ export const SignInModal: React.FC<SignInModalProps> = ({
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="bhakti@plantpulse.ai"
+                placeholder={t.extra.emailPlaceholder}
                 className="w-full pl-9 pr-3 py-2 text-sm rounded-xl border border-[#8FAF91]/40 bg-white focus:outline-none focus:ring-2 focus:ring-[#245C43]"
               />
             </div>
@@ -112,7 +112,7 @@ export const SignInModal: React.FC<SignInModalProps> = ({
 
           <div className="space-y-1 text-left">
             <label className="text-xs font-semibold text-[#245C43]">
-              Password
+              {t.passwordLabel}
             </label>
             <div className="relative">
               <Lock className="w-4 h-4 text-[#8FAF91] absolute left-3 top-3" />
@@ -121,7 +121,7 @@ export const SignInModal: React.FC<SignInModalProps> = ({
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
+                placeholder={t.extra.passwordPlaceholder}
                 className="w-full pl-9 pr-3 py-2 text-sm rounded-xl border border-[#8FAF91]/40 bg-white focus:outline-none focus:ring-2 focus:ring-[#245C43]"
               />
             </div>
@@ -135,7 +135,7 @@ export const SignInModal: React.FC<SignInModalProps> = ({
             {isLoading ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Checking credentials...</span>
+                <span>{t.checkingCredentials}</span>
               </>
             ) : (
               <>
@@ -151,13 +151,13 @@ export const SignInModal: React.FC<SignInModalProps> = ({
               onClick={() => onSuccess(null, undefined)}
               className="text-xs text-[#245C43] hover:underline font-semibold"
             >
-              Continue without credentials (Guest Mode) →
+              {t.extra.guestMode}
             </button>
           </div>
         </form>
 
         <div className="px-6 py-3 bg-[#E8F1E7]/50 border-t border-[#8FAF91]/25 text-center text-xs text-[#546b5e]">
-          Protected by bcrypt password encryption & MySQL XAMPP backend.
+          {t.extra.securityDescription}
         </div>
       </div>
     </div>

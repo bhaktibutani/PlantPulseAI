@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Camera,
   Upload,
@@ -25,9 +25,9 @@ import {
   Clock,
   Globe,
 } from 'lucide-react';
-import { Language, translations } from '../data/translations.ts';
+import { cropDisplayName, Language, localizedText, translations, uiCopy } from '../data/translations.ts';
 import { UserType } from './UserTypeSelection.tsx';
-import { GUJARAT_DISTRICTS } from '../data/gujaratLocations.ts';
+import { GUJARAT_DISTRICTS, localizeGujaratLocation } from '../data/gujaratLocations.ts';
 import { SAMPLE_SPECIMENS, SampleSpecimen } from '../data/sampleSpecimens.ts';
 
 export interface SavedPlantItem {
@@ -111,29 +111,19 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
   const [activeTab, setActiveTab] = useState<'treatment' | 'prevention' | 'monitoring'>('treatment');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const previousLangRef = useRef(lang);
+  const latestLangRef = useRef(lang);
   const t = translations[lang];
 
   // Helper to resize/compress large images via canvas before uploading
   const processImageFile = (file: File) => {
     if (!file.type.startsWith('image/')) {
-      alert(
-        lang === 'gu'
-          ? 'કૃપા કરીને માન્ય ફોટો ફાઇલ પસંદ કરો (JPEG, PNG, WEBP).'
-          : lang === 'hi'
-          ? 'कृपया मान्य छवि फ़ाइल चुनें (JPEG, PNG, WEBP)।'
-          : 'Please select a valid image file (JPEG, PNG, WEBP).'
-      );
+      alert(t.extra.scanFileInvalid);
       return;
     }
 
     if (file.size > 16 * 1024 * 1024) {
-      alert(
-        lang === 'gu'
-          ? 'ફોટો ફાઇલનું કદ ૧૬ એમબી કરતાં ઓછું હોવું જોઈએ.'
-          : lang === 'hi'
-          ? 'फ़ाइल का आकार १६ एमबी से कम होना चाहिए।'
-          : 'Image file size must be under 16MB.'
-      );
+      alert(t.extra.scanFileTooLarge);
       return;
     }
 
@@ -185,6 +175,15 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
     };
     reader.readAsDataURL(file);
   };
+
+  useEffect(() => {
+    if (previousLangRef.current === lang) return;
+    previousLangRef.current = lang;
+    latestLangRef.current = lang;
+    if (previewImage && analysisResult) {
+      executeAnalysis(previewImage, selectedCrop);
+    }
+  }, [lang]);
 
   const handleSelectSpecimen = (specimen: SampleSpecimen) => {
     setActiveSpecimenId(specimen.id);
@@ -265,27 +264,24 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
 
       if (!response.ok) {
         const errJson = await response.json().catch(() => null);
-        throw new Error(errJson?.error || `Server responded with ${response.status}`);
+        throw new Error(t.extra.scanFailure);
       }
 
       const json = await response.json();
       if (!json.success || !json.data) {
-        throw new Error('Malformed diagnosis response from server.');
+        throw new Error(t.extra.scanFailure);
+      }
+
+      if (latestLangRef.current !== lang) {
+        executeAnalysis(imageDataUrl, crop);
+        return;
       }
 
       const data = json.data as PlantDiagnosisData;
 
       // 1. NON-PLANT VALIDATION
       if (!data.isPlantImage) {
-        setValidationError(
-          data.analysisNote ||
-            data.condition ||
-            (lang === 'gu'
-              ? 'આ ફોટામાં કોઈ વનસ્પતિ કે પાંદડું ઓળખાયું નથી. કૃપા કરીને સ્પષ્ટ પાંદડાનો ફોટો અપલોડ કરો.'
-              : lang === 'hi'
-              ? 'इस तस्वीर में कोई पौधा या पत्ती नहीं पहचानी गई। कृपया पौधे की साफ तस्वीर अपलोड करें।'
-              : 'The uploaded image does not appear to contain a plant, crop, or botanical specimen.')
-        );
+        setValidationError(t.extra.scanClearGuidance);
         setAnalysisResult(data);
         setIsAnalyzing(false);
         return;
@@ -305,13 +301,7 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
       clearTimeout(stepTimer1);
       clearTimeout(stepTimer2);
       console.error('Scan analysis error:', err);
-      setApiErrorMessage(
-        lang === 'gu'
-          ? 'પ્લાન્ટપલ્સ એઆઈ હાલ વિશ્લેષણ પૂર્ણ કરી શક્યું નથી. કૃપા કરીને ફરી પ્રયાસ કરો.'
-          : lang === 'hi'
-          ? 'प्लांटपल्स एआई अभी विश्लेषण पूरा नहीं कर सका। कृपया पुनः प्रयास करें।'
-          : "PlantPulse AI couldn't complete the analysis right now. Please try again."
-      );
+      setApiErrorMessage(t.extra.scanFailure);
       setAnalysisResult(null);
       setIsAnalyzing(false);
     }
@@ -427,18 +417,14 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
                 ? 'વાસ્તવિક એઆઈ વનસ્પતિ વિઝન નિદાન'
                 : lang === 'hi'
                 ? 'वास्तविक एआई वनस्पति विजन निदान'
-                : 'REAL AI BOTANICAL VISION DIAGNOSTICS'}
+                : uiCopy(lang, 'REAL AI BOTANICAL VISION DIAGNOSTICS')}
             </span>
           </div>
           <h2 className="text-3xl font-extrabold text-[#17382B] font-display">
             {t.scanTitle}
           </h2>
           <p className="text-sm text-[#476353] mt-1">
-            {lang === 'gu'
-              ? 'પાંદડાનો ફોટો અપલોડ કરો અને જેમિની વિઝન દ્વારા વાસ્તવિક રોગ નિદાન, ગંભીરતા અને સુરક્ષિત ઉપચાર મેળવો.'
-              : lang === 'hi'
-              ? 'पत्ती की तस्वीर अपलोड करें और जेमिनी विजन द्वारा वास्तविक रोग पहचान, गंभीरता और सुरक्षित उपचार प्राप्त करें।'
-              : 'Upload a leaf photo for real-time pathology detection, severity estimation, and practical care protocols.'}
+            {uiCopy(lang, 'Upload a leaf photo for real-time pathology detection, severity estimation, and practical care protocols.')}
           </p>
         </div>
 
@@ -526,20 +512,20 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
                     }`}
                   >
                     {specimen.category === 'healthy'
-                      ? 'HEALTHY'
+                      ? uiCopy(lang, 'HEALTHY')
                       : specimen.category === 'invalid'
-                      ? 'TEST REJECT'
-                      : 'PATHOGEN'}
+                      ? uiCopy(lang, 'TEST REJECT')
+                      : uiCopy(lang, 'PATHOGEN')}
                   </span>
                   {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-[#245C43]" />}
                 </div>
 
                 <div className="space-y-0.5">
                   <div className="text-xs font-bold text-[#17382B] line-clamp-1">
-                    {specimen.cropType}: {specimen.name[lang]}
+                    {cropDisplayName(lang, specimen.cropType)}: {specimen.name[lang]}
                   </div>
                   <div className="text-[10px] text-[#546b5e] line-clamp-1 italic">
-                    {specimen.expectedCondition}
+                    {specimen.description[lang]}
                   </div>
                 </div>
               </button>
@@ -569,19 +555,15 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
                   }}
                   className="w-full text-xs font-semibold px-3 py-2 rounded-xl border border-[#8FAF91]/40 bg-[#FAF8F3] text-[#17382B] focus:outline-none focus:ring-2 focus:ring-[#245C43]"
                 >
-                  <option value="Tomato">Tomato (ટામેટા / टमाटर)</option>
-                  <option value="Cotton">Cotton (કપાસ / कपास)</option>
-                  <option value="Chilli">Chilli (મરચાં / मिर्च)</option>
-                  <option value="Wheat">Wheat (ઘઉં / गेहूं)</option>
-                  <option value="Groundnut">Groundnut (મગફળી / मूंगफली)</option>
-                  <option value="Rose">Rose (ગુલાબ / गुलाब)</option>
-                  <option value="Tulsi">Tulsi (તુલસી / तुलसी)</option>
+                  {(['Tomato', 'Cotton', 'Chilli', 'Wheat', 'Groundnut', 'Rose', 'Tulsi'] as const).map((crop) => (
+                    <option key={crop} value={crop}>{cropDisplayName(lang, crop)}</option>
+                  ))}
                 </select>
               </div>
 
               <div>
                 <label className="text-xs font-bold text-[#17382B] block mb-1">
-                  {t.districtLabel} (Gujarat)
+                  {t.districtLabel}
                 </label>
                 <select
                   value={selectedLocation}
@@ -595,7 +577,7 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
                 >
                   {GUJARAT_DISTRICTS.map((d) => (
                     <option key={d.id} value={d.name.en}>
-                      {d.name[lang]} ({d.name.en})
+                      {d.name[lang]}
                     </option>
                   ))}
                 </select>
@@ -617,7 +599,7 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
                   <div className="absolute inset-0 bg-[#245C43]/20 flex flex-col justify-between p-2 pointer-events-none">
                     <div className="w-full h-1 bg-[#E5A93D] shadow-[0_0_12px_#E5A93D] animate-bounce" />
                     <div className="text-[10px] font-mono text-white bg-black/70 px-2 py-0.5 rounded mx-auto uppercase">
-                      Neural Vision Triage
+                      {localizedText(lang, 'Neural Vision Triage')}
                     </div>
                   </div>
                 )}
@@ -626,7 +608,7 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
                   type="button"
                   onClick={handleResetScan}
                   className="absolute top-2 right-2 p-1.5 bg-black/60 text-white rounded-lg hover:bg-black/80 transition-colors cursor-pointer"
-                  title="Remove specimen"
+                  title={uiCopy(lang, 'Remove specimen')}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -640,7 +622,7 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
 
             <p className="text-xs font-extrabold text-[#17382B] mb-1">
               {previewImage
-                ? `${selectedCrop} ${lang === 'gu' ? 'નમૂનો લોડ થયો' : lang === 'hi' ? 'नमूना लोड हुआ' : 'Specimen Loaded'}`
+                ? `${cropDisplayName(lang, selectedCrop)} ${lang === 'gu' ? 'નમૂનો લોડ થયો' : lang === 'hi' ? 'नमूना लोड हुआ' : 'Specimen Loaded'}`
                 : t.dragOrDrop}
             </p>
             <p className="text-[11px] text-[#546b5e] mb-4">
@@ -695,11 +677,7 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
                 <Sparkles className="w-5 h-5 text-[#E5A93D]" />
                 <span>
                   {analysisResult
-                    ? lang === 'gu'
-                      ? 'ફરીથી વિશ્લેષણ કરો (Re-Analyze)'
-                      : lang === 'hi'
-                      ? 'पुनः विश्लेषण करें (Re-Analyze)'
-                      : 'Re-Analyze Plant Foliage'
+                    ? localizedText(lang, 'Re-Analyze Plant Foliage')
                     : t.analyzePlantBtn}
                 </span>
               </>
@@ -718,7 +696,7 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
                 </div>
                 <div>
                   <span className="text-[10px] font-black uppercase tracking-widest text-[#D96B5F] block">
-                    ANALYSIS NOTICE
+                    {t.extra.scanAnalysisNotice}
                   </span>
                   <h3 className="text-xl font-black text-[#17382B] font-display">
                     {lang === 'gu' ? 'વિશ્લેષણ નિષ્ફળ' : lang === 'hi' ? 'विश्लेषण विफल' : 'Analysis Could Not Be Completed'}
@@ -733,7 +711,7 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
                 className="inline-flex items-center gap-2 bg-[#245C43] text-white text-xs font-bold px-4 py-2.5 rounded-xl hover:bg-[#1a4431] transition-colors cursor-pointer"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
-                <span>{lang === 'gu' ? 'ફરી પ્રયાસ કરો' : lang === 'hi' ? 'पुनः प्रयास करें' : 'Try Again'}</span>
+                <span>{uiCopy(lang, 'Try Again')}</span>
               </button>
             </div>
           )}
@@ -747,7 +725,7 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
                 </div>
                 <div>
                   <span className="text-[10px] font-black uppercase tracking-widest text-[#D96B5F] block">
-                    PLANT VALIDATION NOTICE
+                    {t.extra.scanPlantValidationNotice}
                   </span>
                   <h3 className="text-xl font-black text-[#17382B] font-display">
                     {lang === 'gu' ? 'વનસ્પતિ ઓળખાઈ નથી' : lang === 'hi' ? 'पौधा नहीं पहचाना गया' : 'No Plant Detected'}
@@ -757,29 +735,21 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
 
               <div className="bg-[#FAF8F3] p-5 rounded-2xl border border-[#D96B5F]/25 text-sm text-[#17382B] leading-relaxed">
                 <p className="font-semibold text-[#D96B5F] mb-1">
-                  {lang === 'gu' ? 'નિરીક્ષણ પરિણામ:' : lang === 'hi' ? 'निरीक्षण परिणाम:' : 'Observation:'}
+                  {t.extra.scanObservation}
                 </p>
                 <p>{validationError}</p>
               </div>
 
               <div className="space-y-2">
                 <p className="text-xs font-bold text-[#546b5e]">
-                  {lang === 'gu' ? 'આગામી પગલાં:' : lang === 'hi' ? 'अगले कदम:' : 'Next steps:'}
+                  {t.extra.scanNextSteps}
                 </p>
                 <ul className="text-xs text-[#17382B] space-y-1.5 list-disc pl-4">
                   <li>
-                    {lang === 'gu'
-                      ? 'છોડ, પાંદડું, ડાળી, ફૂલ કે ફળનો સ્પષ્ટ ફોટો અપલોડ કરો.'
-                      : lang === 'hi'
-                      ? 'पौधे, पत्ती, तने, फूल या फल की साफ तस्वीर अपलोड करें।'
-                      : 'Upload a clear photo of a plant, leaf, stem, flower, fruit, or crop.'}
+                    {t.extra.scanClearGuidance}
                   </li>
                   <li>
-                    {lang === 'gu'
-                      ? 'તપાસ કરવા માટે ઉપરના પ્રીસેટ પાંદડાઓમાંથી એક પસંદ કરો.'
-                      : lang === 'hi'
-                      ? 'परीक्षण हेतु ऊपर दिए गए किसी पत्ते के नमूने पर क्लिक करें।'
-                      : 'Or test with one of the calibrated leaf presets above.'}
+                    {t.extra.scanUploadSpecimen}
                   </li>
                 </ul>
               </div>
@@ -790,7 +760,7 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
                   className="inline-flex items-center gap-2 bg-[#245C43] text-white text-xs font-bold px-4 py-2.5 rounded-xl hover:bg-[#1a4431] transition-colors cursor-pointer"
                 >
                   <Upload className="w-3.5 h-3.5" />
-                  <span>{lang === 'gu' ? 'પાંદડાનો ફોટો અપલોડ કરો' : lang === 'hi' ? 'पत्ती की फोटो अपलोड करें' : 'Upload Plant Photo'}</span>
+                  <span>{uiCopy(lang, 'Upload Plant Photo')}</span>
                 </button>
               </div>
             </div>
@@ -805,7 +775,7 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
                 </div>
                 <div>
                   <span className="text-[10px] font-black uppercase tracking-widest text-[#9A7653] block">
-                    IMAGE QUALITY & UNCERTAINTY NOTICE
+                    {localizedText(lang, 'IMAGE QUALITY & UNCERTAINTY NOTICE')}
                   </span>
                   <h3 className="text-xl font-black text-[#17382B] font-display">
                     {lang === 'gu' ? 'અસ્પષ્ટ ફોટો — નિદાન અનિશ્ચિત' : lang === 'hi' ? 'अस्पष्ट तस्वीर — निदान अनिश्चित' : 'Image Unclear — Diagnosis Uncertain'}
@@ -814,7 +784,7 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
               </div>
 
               <div className="bg-[#FAF8F3] p-5 rounded-2xl border border-[#E5A93D]/30 text-sm text-[#17382B]">
-                <p>{analysisResult.analysisNote || 'The image is not clear enough to reliably identify the plant condition. Please provide a clearer photo.'}</p>
+                <p>{analysisResult.analysisNote || t.extra.scanUnclearResult}</p>
                 {analysisResult.followUpQuestion && (
                   <p className="mt-2 text-xs font-semibold text-[#9A7653]">{analysisResult.followUpQuestion}</p>
                 )}
@@ -825,7 +795,7 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
                 className="inline-flex items-center gap-2 bg-[#245C43] text-white text-xs font-bold px-4 py-2.5 rounded-xl hover:bg-[#1a4431] transition-colors cursor-pointer"
               >
                 <Camera className="w-3.5 h-3.5" />
-                <span>{lang === 'gu' ? 'નવો સ્પષ્ટ ફોટો લો' : lang === 'hi' ? 'नई साफ तस्वीर लें' : 'Retake Clear Photo'}</span>
+                <span>{t.extra.scanClearPhoto}</span>
               </button>
             </div>
           )}
@@ -845,7 +815,11 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
                   {analysisStep || t.analyzingPulse}
                 </h4>
                 <p className="text-xs text-[#546b5e] max-w-sm mx-auto">
-                  Running multimodal botanical vision triage with Gemini, evaluating foliar lesions, turgor, and grower context...
+                  {lang === 'gu'
+                    ? 'જેમિની દ્વારા પાંદડાંનાં લક્ષણો, છોડની સ્થિતિ અને ઉગાડવાની માહિતીનું વિશ્લેષણ થઈ રહ્યું છે...'
+                    : lang === 'hi'
+                    ? 'जेमिनी द्वारा पत्तियों के लक्षणों, पौधे की स्थिति और उगाने की जानकारी का विश्लेषण किया जा रहा है...'
+                    : 'Gemini is analyzing leaf symptoms, plant condition, and growing context...'}
                 </p>
               </div>
             </div>
@@ -865,7 +839,7 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
                   ? 'ડાબી બાજુથી પાંદડાનો ફોટો લો અથવા ઉપર આપેલા પ્રીસેટ નમૂનાઓમાંથી એક પસંદ કરો.'
                   : lang === 'hi'
                   ? 'बाईं ओर से पत्ती की तस्वीर लें या ऊपर दिए गए किसी नमूने का चयन करें।'
-                  : 'Capture or upload a leaf photo on the left, or select one of the calibrated specimens above to run live AI pathology.'}
+                  : localizedText(lang, 'Capture or upload a leaf photo on the left, or select one of the calibrated specimens above to run live AI pathology.')}
               </p>
             </div>
           )}
@@ -892,7 +866,7 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
                     )}
                   </h3>
                   <span className="text-xs text-[#546b5e]">
-                    Region: {selectedLocation}, Gujarat · Setup: {userType === 'farmer' ? 'Field Plot' : 'Balcony Pots'}
+                    {localizedText(lang, 'Region')}: {localizeGujaratLocation(selectedLocation, lang)}, {localizedText(lang, 'Gujarat')} · {localizedText(lang, 'Setup')}: {localizedText(lang, userType === 'farmer' ? 'Field Plot' : 'Balcony Pots')}
                   </span>
                 </div>
 
@@ -916,7 +890,7 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
                       }`}
                     />
                     <span className="uppercase font-mono">
-                      {analysisResult.severity} SEVERITY
+                      {localizedText(lang, analysisResult.severity)} · {localizedText(lang, 'Severity')}
                     </span>
                   </span>
                 </div>
@@ -935,11 +909,11 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
                       : t.possibleIssue}
                   </div>
                   <div className="text-2xl font-black text-[#17382B] tracking-tight">
-                    {analysisResult.condition}
+                    {localizedText(lang, analysisResult.condition)}
                   </div>
                   {analysisResult.analysisNote && (
                     <p className="text-xs text-[#546b5e] max-w-md">
-                      {analysisResult.analysisNote}
+                      {localizedText(lang, analysisResult.analysisNote)}
                     </p>
                   )}
                 </div>
@@ -968,7 +942,7 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
                       {t.cropCategory}
                     </span>
                     <span className="font-bold text-[#17382B] block mt-0.5">
-                      {analysisResult.plantType}
+                      {cropDisplayName(lang, analysisResult.plantType)}
                     </span>
                   </div>
                 )}
@@ -978,7 +952,7 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
                       {t.overallHealthLabel}
                     </span>
                     <span className="font-bold text-[#17382B] block mt-0.5">
-                      {analysisResult.overallHealth}
+                      {localizedText(lang, analysisResult.overallHealth)}
                     </span>
                   </div>
                 )}
@@ -988,7 +962,7 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
                       {t.sunlightNeedLabel}
                     </span>
                     <span className="font-bold text-[#17382B] block mt-0.5">
-                      {analysisResult.sunlightRequirement}
+                      {localizedText(lang, analysisResult.sunlightRequirement)}
                     </span>
                   </div>
                 )}
@@ -1003,7 +977,7 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
                         🌱 {t.soilRecLabel}
                       </span>
                       <p className="text-[#395045] leading-relaxed">
-                        {analysisResult.soilRecommendation}
+                        {localizedText(lang, analysisResult.soilRecommendation)}
                       </p>
                     </div>
                   )}
@@ -1013,7 +987,7 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
                         🧪 {t.fertilizerRecLabel}
                       </span>
                       <p className="text-[#395045] leading-relaxed">
-                        {analysisResult.fertilizerRecommendation}
+                        {localizedText(lang, analysisResult.fertilizerRecommendation)}
                       </p>
                     </div>
                   )}
@@ -1034,7 +1008,7 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
                         className="p-3 rounded-xl bg-[#F7F5EF] border border-[#8FAF91]/25 flex items-center gap-2.5"
                       >
                         <AlertTriangle className="w-3.5 h-3.5 text-[#E5A93D] shrink-0" />
-                        <span className="font-medium text-[#17382B]">{symptom}</span>
+                        <span className="font-medium text-[#17382B]">{localizedText(lang, symptom)}</span>
                       </div>
                     ))}
                   </div>
@@ -1114,7 +1088,7 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
                         </li>
                       ))
                     ) : (
-                      <p className="text-xs text-[#546b5e] p-2">Standard botanical hygiene recommended.</p>
+                      <p className="text-xs text-[#546b5e] p-2">{uiCopy(lang, 'Standard botanical hygiene recommended.')}</p>
                     )}
                   </ul>
                 )}
@@ -1130,7 +1104,7 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
                         </li>
                       ))
                     ) : (
-                      <p className="text-xs text-[#546b5e] p-2">Re-inspect in 7 days.</p>
+                      <p className="text-xs text-[#546b5e] p-2">{uiCopy(lang, 'Re-inspect in 7 days.')}</p>
                     )}
                   </ul>
                 )}

@@ -15,9 +15,10 @@ import {
   Activity,
   Globe,
 } from 'lucide-react';
-import { Language } from '../data/translations.ts';
+import { cropDisplayName, Language } from '../data/translations.ts';
 import { UserType } from './UserTypeSelection.tsx';
 import { PLANT_DOCTOR_I18N } from '../data/plantDoctorI18n.ts';
+import { localizeGujaratLocation } from '../data/gujaratLocations.ts';
 
 interface PlantDoctorViewProps {
   userType: UserType;
@@ -76,6 +77,7 @@ export const PlantDoctorView: React.FC<PlantDoctorViewProps> = ({
   // Maintain current active language
   const [currentLang, setCurrentLang] = useState<Language>(propLang || 'en');
   const i18n = PLANT_DOCTOR_I18N[currentLang] || PLANT_DOCTOR_I18N.en;
+  const localizedLocationName = localizeGujaratLocation(locationName, currentLang);
 
   const [inputText, setInputText] = useState('');
   const [isRecording, setIsRecording] = useState(false);
@@ -84,18 +86,21 @@ export const PlantDoctorView: React.FC<PlantDoctorViewProps> = ({
   const [attachedImage, setAttachedImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const speechRecognitionRef = useRef<any>(null);
 
   // Synchronize when parent propLang changes
   useEffect(() => {
-    if (propLang && propLang !== currentLang) {
+    if (propLang && propLang !== currentLangRef.current) {
       handleSwitchLanguage(propLang);
     }
   }, [propLang]);
 
   // Pre-baked multilingual templates for initial starter messages
   const buildInitialStarterMessages = (targetLang: Language): Message[] => {
+    const localizedCrop = cropDisplayName(targetLang, cropName);
+    const localizedLocation = localizeGujaratLocation(locationName, targetLang);
     if (latestScanContext) {
-      const scanCrop = latestScanContext.plantName || cropName;
+      const scanCrop = cropDisplayName(targetLang, latestScanContext.plantName || cropName);
       const scanCond = latestScanContext.condition || 'Foliar Issue';
       const scanConf = latestScanContext.confidence ? `${latestScanContext.confidence}%` : '88%';
 
@@ -158,7 +163,7 @@ export const PlantDoctorView: React.FC<PlantDoctorViewProps> = ({
         {
           id: 'starter-m1',
           sender: 'doctor',
-          text: `Hello! I am your Plant Doctor at PlantPulse AI. Tell me what you're seeing on your ${cropName} (${locationName}), or choose an issue below.`,
+          text: `Hello! I am your Plant Doctor at PlantPulse AI. Tell me what you're seeing on your ${localizedCrop} (${localizedLocation}), or choose an issue below.`,
           time: 'Just now',
         },
         {
@@ -185,7 +190,7 @@ export const PlantDoctorView: React.FC<PlantDoctorViewProps> = ({
         {
           id: 'starter-m1',
           sender: 'doctor',
-          text: `નમસ્તે! હું પ્લાન્ટપલ્સ એઆઈ નો પ્લાન્ટ ડોક્ટર છું. તમારા ${cropName} (${locationName}) માં તમે શું જોઈ રહ્યા છો તે જણાવો, અથવા નીચે આપેલા વિકલ્પોમાંથી પસંદ કરો.`,
+          text: `નમસ્તે! હું પ્લાન્ટપલ્સ એઆઈ નો પ્લાન્ટ ડોક્ટર છું. તમારા ${localizedCrop} (${localizedLocation}) માં તમે શું જોઈ રહ્યા છો તે જણાવો, અથવા નીચે આપેલા વિકલ્પોમાંથી પસંદ કરો.`,
           time: 'હમણાં',
         },
         {
@@ -212,7 +217,7 @@ export const PlantDoctorView: React.FC<PlantDoctorViewProps> = ({
         {
           id: 'starter-m1',
           sender: 'doctor',
-          text: `नमस्ते! मैं प्लांटपल्स एआई का प्लांट डॉक्टर हूँ। आपके ${cropName} (${locationName}) के बारे में बताएं कि आप क्या लक्षण देख रहे हैं, या नीचे से कोई विषय चुनें।`,
+          text: `नमस्ते! मैं प्लांटपल्स एआई का प्लांट डॉक्टर हूँ। आपके ${localizedCrop} (${localizedLocation}) के बारे में बताएं कि आप क्या लक्षण देख रहे हैं, या नीचे से कोई विषय चुनें।`,
           time: 'अभी',
         },
         {
@@ -251,6 +256,20 @@ export const PlantDoctorView: React.FC<PlantDoctorViewProps> = ({
   const [messages, setMessages] = useState<Message[]>(() =>
     buildInitialStarterMessages(currentLang)
   );
+  const messagesRef = useRef(messages);
+  const currentLangRef = useRef(currentLang);
+  const localizationRequestRef = useRef(0);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  const localizedMessageTime = (targetLang: Language, time: string) => {
+    const isRecent = ['Just now', 'अभी', 'હમણાં'].includes(time);
+    if (targetLang === 'gu') return isRecent ? 'હમણાં' : '૧ મિનિટ પહેલા';
+    if (targetLang === 'hi') return isRecent ? 'अभी' : '१ मिनट पहले';
+    return isRecent ? 'Just now' : '1 min ago';
+  };
 
   // Auto-scroll when messages update
   useEffect(() => {
@@ -266,36 +285,18 @@ export const PlantDoctorView: React.FC<PlantDoctorViewProps> = ({
 
   // Dynamic language switcher that translates the entire UI AND all visible conversation messages
   const handleSwitchLanguage = async (newLang: Language) => {
-    if (newLang === currentLang) return;
+    if (newLang === currentLangRef.current) return;
+    const sourceLang = currentLangRef.current;
+    currentLangRef.current = newLang;
+    const requestId = ++localizationRequestRef.current;
     setCurrentLang(newLang);
     if (onLanguageChange) {
       onLanguageChange(newLang);
     }
 
     // Step 1: Immediately localize any messages that have cached translations for newLang
-    let needsApiLocalization = false;
-    const updatedMessages = messages.map((m) => {
-      if (m.translations && m.translations[newLang]) {
-        const cached = m.translations[newLang]!;
-        return {
-          ...m,
-          text: cached.text,
-          options: cached.options || m.options,
-          recommendation: cached.recommendation || m.recommendation,
-          time:
-            newLang === 'gu'
-              ? m.time === 'Just now' || m.time === 'अभी'
-                ? 'હમણાં'
-                : '૧ મિનિટ પહેલા'
-              : newLang === 'hi'
-              ? m.time === 'Just now' || m.time === 'હમણાં'
-                ? 'अभी'
-                : '१ मिनट पहले'
-              : m.time === 'હમણાં' || m.time === 'अभी'
-              ? 'Just now'
-              : '1 min ago',
-        };
-      }
+    const pendingTranslations: Message[] = [];
+    const updatedMessages = messagesRef.current.map((m) => {
       // Check if message is a known starter message
       if (m.id.startsWith('starter-')) {
         const starters = buildInitialStarterMessages(newLang);
@@ -313,14 +314,38 @@ export const PlantDoctorView: React.FC<PlantDoctorViewProps> = ({
           };
         }
       }
-      needsApiLocalization = true;
-      return m;
+      if (m.translations && m.translations[newLang]) {
+        const cached = m.translations[newLang]!;
+        return {
+          ...m,
+          text: cached.text,
+          options: cached.options || m.options,
+          recommendation: cached.recommendation || m.recommendation,
+          time: localizedMessageTime(newLang, m.time),
+        };
+      }
+      const source = m.translations?.[sourceLang];
+      pendingTranslations.push({
+        ...m,
+        text: source?.text || m.text,
+        options: source?.options || m.options,
+        recommendation: source?.recommendation || m.recommendation,
+      });
+      return {
+        ...m,
+        text: PLANT_DOCTOR_I18N[newLang].translatingLoading,
+        time: localizedMessageTime(newLang, m.time),
+        options: undefined,
+        recommendation: undefined,
+      };
     });
 
+    const localizedById = new Map(updatedMessages.map((message) => [message.id, message]));
+    messagesRef.current = updatedMessages;
     setMessages(updatedMessages);
 
     // Step 2: If there are dynamic user or doctor messages without cached translation, call backend translation
-    if (needsApiLocalization) {
+    if (pendingTranslations.length > 0) {
       setIsLocalizing(true);
       try {
         const res = await fetch('/api/localize-doctor-messages', {
@@ -330,49 +355,79 @@ export const PlantDoctorView: React.FC<PlantDoctorViewProps> = ({
             ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
           },
           body: JSON.stringify({
-            messages: updatedMessages.map((m) => ({
+            messages: pendingTranslations.map((m) => ({
               id: m.id,
               sender: m.sender,
               text: m.text,
-              options: m.options,
-              recommendation: m.recommendation,
+              ...(m.options ? { options: m.options } : {}),
+              ...(m.recommendation ? { recommendation: m.recommendation } : {}),
             })),
             targetLang: newLang,
           }),
         });
 
-        if (res.ok) {
-          const data = await res.json();
-          if (data.success && Array.isArray(data.messages)) {
-            const locMap = new Map(data.messages.map((item: any) => [item.id, item]));
-            setMessages((prev) =>
-              prev.map((msg) => {
-                const loc: any = locMap.get(msg.id);
-                if (loc) {
-                  return {
-                    ...msg,
-                    text: loc.text || msg.text,
-                    options: loc.options || msg.options,
-                    recommendation: loc.recommendation || msg.recommendation,
-                    translations: {
-                      ...(msg.translations || {}),
-                      [newLang]: {
-                        text: loc.text || msg.text,
-                        options: loc.options || msg.options,
-                        recommendation: loc.recommendation || msg.recommendation,
-                      },
-                    },
-                  };
-                }
-                return msg;
-              })
-            );
+        if (!res.ok) {
+          throw new Error(`Message localization failed with HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        if (!data.success || !Array.isArray(data.messages)) {
+          throw new Error('Message localization returned an invalid response.');
+        }
+        const translatedById = new Map<string, any>(
+          data.messages.map((item: any) => [item.id, item])
+        );
+        for (const source of pendingTranslations) {
+          const translated = translatedById.get(source.id);
+          if (!translated || typeof translated.text !== 'string' || !translated.text.trim()) {
+            throw new Error(`Message ${source.id} was not translated.`);
+          }
+          if (
+            source.options?.length &&
+            (!Array.isArray(translated.options) || translated.options.length !== source.options.length)
+          ) {
+            throw new Error(`Suggested options for ${source.id} were not translated.`);
+          }
+          const current = localizedById.get(source.id);
+          if (current) {
+            localizedById.set(source.id, {
+              ...current,
+              text: translated.text,
+              time: localizedMessageTime(newLang, source.time),
+              options: translated.options || current.options,
+              recommendation: translated.recommendation || current.recommendation,
+              translations: {
+                ...(source.translations || {}),
+                [newLang]: {
+                  text: translated.text,
+                  options: translated.options || current.options,
+                  recommendation: translated.recommendation || current.recommendation,
+                },
+              },
+            });
           }
         }
       } catch (err) {
-        console.warn('Could not localize messages via API:', err);
+        console.error('Could not localize Plant Doctor messages:', err);
+        for (const source of pendingTranslations) {
+          const current = localizedById.get(source.id);
+          if (current) {
+            localizedById.set(source.id, {
+              ...current,
+              text: PLANT_DOCTOR_I18N[newLang].errorLocalization,
+              options: undefined,
+              recommendation: undefined,
+            });
+          }
+        }
       } finally {
-        setIsLocalizing(false);
+        if (requestId === localizationRequestRef.current) {
+          const finalMessages = messagesRef.current.map(
+            (message) => localizedById.get(message.id) || message
+          );
+          messagesRef.current = finalMessages;
+          setMessages(finalMessages);
+          setIsLocalizing(false);
+        }
       }
     }
   };
@@ -392,19 +447,23 @@ export const PlantDoctorView: React.FC<PlantDoctorViewProps> = ({
 
   // Text-to-Speech in the selected language
   const speakText = (text: string) => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      if (currentLang === 'gu') {
-        utterance.lang = 'gu-IN';
-      } else if (currentLang === 'hi') {
-        utterance.lang = 'hi-IN';
-      } else {
-        utterance.lang = 'en-IN';
-      }
-      utterance.rate = 0.95;
-      window.speechSynthesis.speak(utterance);
+    if (!('speechSynthesis' in window)) {
+      alert(i18n.speechNotAvailable);
+      return;
     }
+    const speechLang = currentLang === 'gu' ? 'gu-IN' : currentLang === 'hi' ? 'hi-IN' : 'en-IN';
+    const voices = window.speechSynthesis.getVoices();
+    const voice = voices.find((item) => item.lang.toLowerCase() === speechLang.toLowerCase());
+    if (!voice) {
+      alert(i18n.speechNotAvailable);
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = speechLang;
+    utterance.voice = voice;
+    utterance.rate = 0.95;
+    window.speechSynthesis.speak(utterance);
   };
 
   // Voice speech recognition in the selected language
@@ -415,12 +474,14 @@ export const PlantDoctorView: React.FC<PlantDoctorViewProps> = ({
     }
 
     if (isRecording) {
+      speechRecognitionRef.current?.stop();
       setIsRecording(false);
       return;
     }
 
     const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     const recognition = new SpeechRec();
+    speechRecognitionRef.current = recognition;
     recognition.lang = currentLang === 'gu' ? 'gu-IN' : currentLang === 'hi' ? 'hi-IN' : 'en-IN';
     recognition.interimResults = false;
 
@@ -435,15 +496,26 @@ export const PlantDoctorView: React.FC<PlantDoctorViewProps> = ({
       sendMessage(transcript);
     };
 
-    recognition.onerror = () => {
+    recognition.onerror = (event: any) => {
       setIsRecording(false);
+      const message = event?.error === 'not-allowed' || event?.error === 'service-not-allowed'
+        ? i18n.voicePermissionDenied
+        : i18n.voiceRecognitionFailed;
+      alert(message);
     };
 
     recognition.onend = () => {
       setIsRecording(false);
+      speechRecognitionRef.current = null;
     };
 
-    recognition.start();
+    try {
+      recognition.start();
+    } catch {
+      setIsRecording(false);
+      speechRecognitionRef.current = null;
+      alert(i18n.voiceRecognitionFailed);
+    }
   };
 
   const sendMessage = async (textToSend: string, imageToSend?: string | null) => {
@@ -485,7 +557,7 @@ export const PlantDoctorView: React.FC<PlantDoctorViewProps> = ({
           userContext: {
             userType,
             cropName,
-            districtName: locationName,
+            districtName: localizedLocationName,
             growingLocation: userType === 'farmer' ? 'Field Plot' : 'Balcony / Terrace',
           },
           lang: currentLang,
@@ -528,6 +600,8 @@ export const PlantDoctorView: React.FC<PlantDoctorViewProps> = ({
 
   // Pure localized fallback without language mixing
   const handleOfflineDoctorReply = (query: string) => {
+    const localizedCrop = cropDisplayName(currentLang, cropName);
+    const localizedLocation = localizedLocationName;
     const isWater =
       query.toLowerCase().includes('water') ||
       query.includes('પાણી') ||
@@ -599,10 +673,10 @@ export const PlantDoctorView: React.FC<PlantDoctorViewProps> = ({
     } else if (isWater) {
       replyText =
         currentLang === 'gu'
-          ? `તમારા ${cropName} (${locationName}) માટે સિંચાઈ સલાહ: પાંદડા પર સીધું પાણી ન છાંટવું. માત્ર થડ પાસે જમીનમાં સવારે ૭ થી ૯ વચ્ચે ભેજ જાળવવો.`
+          ? `તમારા ${localizedCrop} (${localizedLocation}) માટે સિંચાઈ સલાહ: પાંદડા પર સીધું પાણી ન છાંટવું. માત્ર થડ પાસે જમીનમાં સવારે ૭ થી ૯ વચ્ચે ભેજ જાળવવો.`
           : currentLang === 'hi'
-          ? `आपके ${cropName} (${locationName}) के लिए सिंचाई सलाह: पत्तियों पर ऊपर से पानी न डालें। सुबह के समय केवल मिट्टी में हल्की सिंचाई करें।`
-          : `Irrigation guidance for your ${cropName} in ${locationName}: Withhold overhead sprinkler wetting. Drip irrigate early in the morning so foliage stays bone-dry.`;
+          ? `आपके ${localizedCrop} (${localizedLocation}) के लिए सिंचाई सलाह: पत्तियों पर ऊपर से पानी न डालें। सुबह के समय केवल मिट्टी में हल्की सिंचाई करें।`
+          : `Irrigation guidance for your ${localizedCrop} in ${localizedLocation}: Withhold overhead sprinkler wetting. Drip irrigate early in the morning so foliage stays bone-dry.`;
       options =
         currentLang === 'gu'
           ? ['શું માટીમાં ડ્રેનેજ બરાબર છે?', 'પાણી આપવાનો શ્રેષ્ઠ સમય કયો?']
@@ -612,10 +686,10 @@ export const PlantDoctorView: React.FC<PlantDoctorViewProps> = ({
     } else {
       replyText =
         currentLang === 'gu'
-          ? `મેં તમારી પૂછપરછ નોંધી છે. ${cropName} (${locationName}) ના સંદર્ભમાં, છોડ પર કોઈ કાળા ડાઘ, કરચલી કે જીવાત દેખાય છે?`
+          ? `મેં તમારી પૂછપરછ નોંધી છે. ${localizedCrop} (${localizedLocation}) ના સંદર્ભમાં, છોડ પર કોઈ કાળા ડાઘ, કરચલી કે જીવાત દેખાય છે?`
           : currentLang === 'hi'
-          ? `मैंने आपका प्रश्न दर्ज किया है। ${cropName} (${locationName}) के संदर्भ में, क्या पत्तियों पर कोई धब्बे, सिकुड़न या कीट दिख रहे हैं?`
-          : `Understood. For your ${cropName} in ${locationName}, are you noticing leaf curling, chlorotic spots, or active sucking insects?`;
+          ? `मैंने आपका प्रश्न दर्ज किया है। ${localizedCrop} (${localizedLocation}) के संदर्भ में, क्या पत्तियों पर कोई धब्बे, सिकुड़न या कीट दिख रहे हैं?`
+          : `Understood. For your ${localizedCrop} in ${localizedLocation}, are you noticing leaf curling, chlorotic spots, or active sucking insects?`;
       options =
         currentLang === 'gu'
           ? ['હા, કથ્થઈ ડાઘ છે', 'ના, માત્ર પાંદડા પીળા છે']
@@ -665,7 +739,7 @@ export const PlantDoctorView: React.FC<PlantDoctorViewProps> = ({
               </span>
             </div>
             <p className="text-xs text-[#546b5e]">
-              {i18n.contextLabel(cropName, locationName, userType === 'farmer')}
+              {i18n.contextLabel(cropDisplayName(currentLang, cropName), localizedLocationName, userType === 'farmer')}
             </p>
           </div>
         </div>

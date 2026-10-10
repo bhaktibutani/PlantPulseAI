@@ -31,6 +31,9 @@ dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+const SUPPORTED_LANGUAGES = new Set(['en', 'gu', 'hi']);
+const isSupportedLanguage = (value: unknown): value is 'en' | 'gu' | 'hi' =>
+  typeof value === 'string' && SUPPORTED_LANGUAGES.has(value);
 
 // Initialize Google GenAI client server-side
 const apiKey = process.env.GEMINI_API_KEY;
@@ -675,6 +678,10 @@ async function startServer() {
         lang = 'en',
       } = req.body;
 
+      if (!isSupportedLanguage(lang)) {
+        return res.status(400).json({ error: 'Unsupported language. Use en, gu, or hi.' });
+      }
+
       const languageInstruction =
         lang === 'gu'
           ? 'Respond entirely in Gujarati (ગુજરાતી).'
@@ -808,6 +815,10 @@ ${languageInstruction}
         lang = 'en',
       } = req.body;
 
+      if (!isSupportedLanguage(lang)) {
+        return res.status(400).json({ error: 'Unsupported language. Use en, gu, or hi.' });
+      }
+
       const languageInstruction =
         lang === 'gu'
           ? 'Respond entirely in Gujarati (ગુજરાતી).'
@@ -921,6 +932,10 @@ ${languageInstruction}
   app.post('/api/analyze-plant', optionalAuthenticateUser, async (req: any, res) => {
     try {
       const { image, userContext, lang = 'en' } = req.body;
+
+      if (!isSupportedLanguage(lang)) {
+        return res.status(400).json({ error: 'Unsupported language. Use en, gu, or hi.' });
+      }
 
       if (!image || !image.base64) {
         return res.status(400).json({
@@ -1140,6 +1155,10 @@ ${contextDescription}
         lang = 'en',
       } = req.body;
 
+      if (!isSupportedLanguage(lang)) {
+        return res.status(400).json({ error: 'Unsupported language. Use en, gu, or hi.' });
+      }
+
       if (!userMessage && !attachedImage) {
         return res.status(400).json({ error: 'Message is required' });
       }
@@ -1356,6 +1375,9 @@ Never mix English sentences or half-English phrases into Gujarati or Hindi respo
   app.post('/api/localize-doctor-messages', optionalAuthenticateUser, async (req: any, res) => {
     try {
       const { messages = [], targetLang = 'en' } = req.body;
+      if (!isSupportedLanguage(targetLang)) {
+        return res.status(400).json({ error: 'Unsupported language. Use en, gu, or hi.' });
+      }
       if (!Array.isArray(messages) || messages.length === 0) {
         return res.json({ success: true, messages: [] });
       }

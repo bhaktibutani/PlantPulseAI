@@ -28,6 +28,10 @@ export interface DoctorI18nStrings {
   closeTooltip: string;
   errorConsultation: string;
   errorNetwork: string;
+  errorLocalization: string;
+  voicePermissionDenied: string;
+  voiceRecognitionFailed: string;
+  speechNotAvailable: string;
   userAttachedLeafText: string;
 }
 
@@ -61,6 +65,10 @@ export const PLANT_DOCTOR_I18N: Record<Language, DoctorI18nStrings> = {
     closeTooltip: 'Close Plant Doctor',
     errorConsultation: 'Plant Doctor is currently unable to complete consultation. Please try again.',
     errorNetwork: 'Network issue connecting to Plant Doctor. Using local agronomic knowledge.',
+    errorLocalization: 'This message could not be translated. Please try switching languages again.',
+    voicePermissionDenied: 'Microphone access was denied. Allow microphone access and try again.',
+    voiceRecognitionFailed: 'Voice input could not be completed. Please try again or type your question.',
+    speechNotAvailable: 'Speech output is unavailable for this language on this device.',
     userAttachedLeafText: 'Attached leaf image for plant doctor triage',
   },
   gu: {
@@ -92,6 +100,10 @@ export const PLANT_DOCTOR_I18N: Record<Language, DoctorI18nStrings> = {
     closeTooltip: 'પ્લાન્ટ ડોક્ટર બંધ કરો',
     errorConsultation: 'પ્લાન્ટ ડોક્ટર હાલ પરામર્શ પૂર્ણ કરી શક્યા નથી. કૃપા કરીને ફરી પ્રયાસ કરો.',
     errorNetwork: 'નેટવર્ક સમસ્યા છે. દેશી કૃષિ જ્ઞાનનો ઉપયોગ કરવામાં આવી રહ્યો છે.',
+    errorLocalization: 'આ સંદેશનો અનુવાદ થઈ શક્યો નથી. કૃપા કરીને ભાષા ફરીથી બદલો.',
+    voicePermissionDenied: 'માઇક્રોફોનની પરવાનગી નકારી છે. પરવાનગી આપીને ફરી પ્રયાસ કરો.',
+    voiceRecognitionFailed: 'અવાજથી પ્રશ્ન લઈ શકાયો નથી. ફરી પ્રયાસ કરો અથવા પ્રશ્ન લખો.',
+    speechNotAvailable: 'આ ઉપકરણમાં આ ભાષા માટે અવાજ ઉપલબ્ધ નથી.',
     userAttachedLeafText: 'પ્લાન્ટ ડોક્ટર તપાસ માટે પાંદડાનો ફોટો જોડ્યો છે',
   },
   hi: {
@@ -123,6 +135,10 @@ export const PLANT_DOCTOR_I18N: Record<Language, DoctorI18nStrings> = {
     closeTooltip: 'प्लांट डॉक्टर बंद करें',
     errorConsultation: 'प्लांट डॉक्टर अभी परामर्श पूरा नहीं कर सके। कृपया पुनः प्रयास करें।',
     errorNetwork: 'नेटवर्क समस्या है। स्थानीय कृषि ज्ञान का उपयोग किया जा रहा है।',
+    errorLocalization: 'इस संदेश का अनुवाद नहीं हो सका। कृपया भाषा फिर से बदलें।',
+    voicePermissionDenied: 'माइक्रोफ़ोन की अनुमति अस्वीकार की गई। अनुमति देकर फिर प्रयास करें।',
+    voiceRecognitionFailed: 'आवाज़ से प्रश्न दर्ज नहीं हो सका। फिर प्रयास करें या प्रश्न लिखें।',
+    speechNotAvailable: 'इस डिवाइस पर इस भाषा के लिए वाक् आउटपुट उपलब्ध नहीं है।',
     userAttachedLeafText: 'प्लांट डॉक्टर जांच हेतु पत्ती की तस्वीर संलग्न की गई है',
   },
 };

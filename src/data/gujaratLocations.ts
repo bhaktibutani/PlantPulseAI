@@ -211,3 +211,34 @@ export const URBAN_GROWING_LOCATIONS = [
   { id: 'garden', name: { en: 'Garden', gu: 'બગીચો', hi: 'बगीचा' }, icon: '🌳' },
   { id: 'office', name: { en: 'Office', gu: 'ઓફિસ', hi: 'कार्यालय' }, icon: '🏢' },
 ];
+
+export function localizeGujaratLocation(value: string, lang: 'en' | 'gu' | 'hi'): string {
+  for (const district of GUJARAT_DISTRICTS) {
+    const groups = [
+      [district.name.en, district.name.gu, district.name.hi],
+      ...district.villages.en.map((_, index) => [
+        district.villages.en[index],
+        district.villages.gu[index],
+        district.villages.hi[index],
+      ]),
+      ...district.cities.en.map((_, index) => [
+        district.cities.en[index],
+        district.cities.gu[index],
+        district.cities.hi[index],
+      ]),
+    ];
+    for (const names of groups) {
+      const match = names.findIndex((name) => name.toLocaleLowerCase() === value.trim().toLocaleLowerCase());
+      if (match >= 0) return names[lang === 'en' ? 0 : lang === 'gu' ? 1 : 2];
+    }
+  }
+
+  for (const location of URBAN_GROWING_LOCATIONS) {
+    const match = Object.values(location.name).findIndex(
+      (name) => name.toLocaleLowerCase() === value.trim().toLocaleLowerCase()
+    );
+    if (match >= 0) return location.name[lang];
+  }
+
+  return value;
+}

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Logo } from './Logo.tsx';
 import { HeroBotanicalComposition } from './BotanicalVisuals.tsx';
-import { Language, translations } from '../data/translations.ts';
+import { Language, translations, uiCopy } from '../data/translations.ts';
 import {
   ArrowRight,
   CheckCircle2,
@@ -49,53 +49,53 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   // The Core PlantPulse Philosophy: OBSERVE → UNDERSTAND → ASK → ANALYZE → RECOMMEND → TRACK → IMPROVE
   const philosophySteps = [
     {
-      label: 'OBSERVE',
-      tagline: 'High-Res Optical Leaf Capture',
-      desc: 'Capture microscopic chlorophyll pigmentation, fungal pustules, leaf edge necrosis and moisture turgor in seconds.',
+      label: uiCopy(lang, 'OBSERVE'),
+      tagline: uiCopy(lang, 'High-Res Optical Leaf Capture'),
+      desc: uiCopy(lang, 'Capture microscopic chlorophyll pigmentation, fungal pustules, leaf edge necrosis and moisture turgor in seconds.'),
       icon: Eye,
-      metric: '0.4s Ingestion',
+      metric: uiCopy(lang, '0.4s Ingestion'),
     },
     {
-      label: 'UNDERSTAND',
-      tagline: 'Environmental Weather & Soil Correlation',
-      desc: 'Correlate visual leaf cues with real-time hyper-local rainfall, evapotranspiration rates, humidity and soil substrate metrics.',
+      label: uiCopy(lang, 'UNDERSTAND'),
+      tagline: uiCopy(lang, 'Environmental Weather & Soil Correlation'),
+      desc: uiCopy(lang, 'Correlate visual leaf cues with real-time hyper-local rainfall, evapotranspiration rates, humidity and soil substrate metrics.'),
       icon: Compass,
-      metric: '94.8% Precision',
+      metric: uiCopy(lang, '94.8% Precision'),
     },
     {
-      label: 'ASK',
-      tagline: 'Multilingual Vernacular Plant Doctor',
-      desc: 'Engage in natural voice or text consultations in Gujarati, Hindi or English to narrow down root symptoms with structured inquiries.',
+      label: uiCopy(lang, 'ASK'),
+      tagline: uiCopy(lang, 'Multilingual Vernacular Plant Doctor'),
+      desc: uiCopy(lang, 'Engage in natural voice or text consultations in Gujarati, Hindi or English to narrow down root symptoms with structured inquiries.'),
       icon: MessageSquare,
-      metric: 'Voice & Regional Native',
+      metric: uiCopy(lang, 'Voice & Regional Native'),
     },
     {
-      label: 'ANALYZE',
-      tagline: 'Differential Pathogen & Stress Classifier',
-      desc: 'Calculate the proprietary Plant Health Pulse (0–100) separating infectious blight, pests, soil nutrient deficit and sun scorch.',
+      label: uiCopy(lang, 'ANALYZE'),
+      tagline: uiCopy(lang, 'Differential Pathogen & Stress Classifier'),
+      desc: uiCopy(lang, 'Calculate the proprietary Plant Health Pulse (0–100) separating infectious blight, pests, soil nutrient deficit and sun scorch.'),
       icon: Microscope,
-      metric: 'Vitality Pulse Score',
+      metric: uiCopy(lang, 'Vitality Pulse Score'),
     },
     {
-      label: 'RECOMMEND',
-      tagline: 'Agronomic Treatment & Weather-Smart Timing',
-      desc: 'Generate precise actionable guidance — whether to withhold irrigation ahead of rainfall or apply bio-pesticide before sunset.',
+      label: uiCopy(lang, 'RECOMMEND'),
+      tagline: uiCopy(lang, 'Agronomic Treatment & Weather-Smart Timing'),
+      desc: uiCopy(lang, 'Generate precise actionable guidance — whether to withhold irrigation ahead of rainfall or apply bio-pesticide before sunset.'),
       icon: Sparkles,
-      metric: 'Actionable Directives',
+      metric: uiCopy(lang, 'Actionable Directives'),
     },
     {
-      label: 'TRACK',
-      tagline: 'Longitudinal Botanical Health Ledger',
-      desc: 'Monitor recovery trajectories across crop cycles or indoor pot seasons with historical vegetative health curves.',
+      label: uiCopy(lang, 'TRACK'),
+      tagline: uiCopy(lang, 'Longitudinal Botanical Health Ledger'),
+      desc: uiCopy(lang, 'Monitor recovery trajectories across crop cycles or indoor pot seasons with historical vegetative health curves.'),
       icon: LineChart,
-      metric: 'Timeline History',
+      metric: uiCopy(lang, 'Timeline History'),
     },
     {
-      label: 'IMPROVE',
-      tagline: 'Yield Maximization & Plant Longevity',
-      desc: 'Elevate farm harvest yields and keep urban balcony plants thriving with continuous proactive vigilance.',
+      label: uiCopy(lang, 'IMPROVE'),
+      tagline: uiCopy(lang, 'Yield Maximization & Plant Longevity'),
+      desc: uiCopy(lang, 'Turn every scan, consultation and field observation into better long-term plant care.'),
       icon: Sprout,
-      metric: '+28% Target Yield',
+      metric: uiCopy(lang, '+28% Target Yield'),
     },
   ];
 
@@ -110,25 +110,25 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           {/* Zone 2: Navigation Links */}
           <nav className="hidden lg:flex items-center gap-8 text-sm font-semibold text-[#345243]">
             <a href="#product" className="hover:text-[#245C43] transition-colors">
-              Product
+              {uiCopy(lang, 'Product')}
             </a>
             <a href="#philosophy" className="hover:text-[#245C43] transition-colors">
-              How It Works
+              {uiCopy(lang, 'How It Works')}
             </a>
             <button
               onClick={() => onSelectPersona('farmer')}
               className="hover:text-[#245C43] transition-colors text-left"
             >
-              For Farmers
+              {uiCopy(lang, 'For Farmers')}
             </button>
             <button
               onClick={() => onSelectPersona('urban')}
               className="hover:text-[#245C43] transition-colors text-left"
             >
-              For Urban Gardeners
+              {uiCopy(lang, 'For Urban Gardeners')}
             </button>
             <a href="#about" className="hover:text-[#245C43] transition-colors">
-              About
+              {uiCopy(lang, 'About')}
             </a>
           </nav>
 
@@ -190,19 +190,17 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               {/* Eyebrow badge */}
               <div className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-[#245C43] bg-[#E8F1E7] border border-[#8FAF91]/40 px-3.5 py-1.5 rounded-full mb-6">
                 <span className="w-2 h-2 rounded-full bg-[#245C43] animate-pulse" />
-                <span>AI-POWERED PLANT HEALTH</span>
+                <span>{uiCopy(lang, 'AI-POWERED PLANT HEALTH')}</span>
               </div>
 
               {/* Display Headline */}
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-[#17382B] font-display leading-[1.08] mb-6">
-                CHECK THE PULSE.{' '}
-                <span className="text-[#245C43] block">UNDERSTAND THE PLANT.</span>{' '}
-                <span className="text-[#9A7653]">GROW BETTER.</span>
+                {uiCopy(lang, 'CHECK THE PULSE. UNDERSTAND THE PLANT. GROW BETTER.')}
               </h1>
 
               {/* Supporting Copy */}
               <p className="text-base sm:text-lg text-[#324b3e] leading-relaxed mb-8 font-normal">
-                PlantPulse AI combines plant images, local weather, soil insights and intelligent conversations to help farmers and urban gardeners make better plant-care decisions.
+                {uiCopy(lang, 'PlantPulse AI combines plant images, local weather, soil insights and intelligent conversations to help farmers and urban gardeners make better plant-care decisions.')}
               </p>
 
               {/* CTAs */}
@@ -211,7 +209,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   onClick={onGetStarted}
                   className="inline-flex items-center justify-center gap-2.5 bg-[#245C43] hover:bg-[#1a4431] text-white text-base font-semibold px-7 py-3.5 rounded-xl shadow-md transition-all duration-150 transform hover:-translate-y-0.5 active:translate-y-0"
                 >
-                  <span>Start Growing Smarter</span>
+                  <span>{uiCopy(lang, 'Start Growing Smarter')}</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
 
@@ -219,7 +217,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   onClick={onExploreGuest}
                   className="inline-flex items-center justify-center gap-2 text-sm font-semibold text-[#245C43] bg-white hover:bg-[#E8F1E7]/60 border border-[#8FAF91]/50 px-6 py-3.5 rounded-xl shadow-xs transition-colors"
                 >
-                  <span>Explore PlantPulse</span>
+                  <span>{uiCopy(lang, 'Explore PlantPulse')}</span>
                 </button>
               </div>
 
@@ -227,15 +225,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <div className="w-full pt-6 border-t border-[#8FAF91]/25 grid grid-cols-3 gap-4 text-left">
                 <div>
                   <div className="text-2xl font-bold text-[#245C43] font-mono">0.4s</div>
-                  <div className="text-xs text-[#546b5e] font-medium">Optical Pulse Scan</div>
+                  <div className="text-xs text-[#546b5e] font-medium">{uiCopy(lang, 'Optical Pulse Scan')}</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-[#245C43] font-mono">3 Languages</div>
+                  <div className="text-2xl font-bold text-[#245C43] font-mono">{t.extra.landingLanguages}</div>
                   <div className="text-xs text-[#546b5e] font-medium">EN · ગુજરાતી · हिन्दी</div>
                 </div>
                 <div>
                   <div className="text-2xl font-bold text-[#245C43] font-mono">2 Personas</div>
-                  <div className="text-xs text-[#546b5e] font-medium">Farmer & Balcony</div>
+                  <div className="text-xs text-[#546b5e] font-medium">{uiCopy(lang, 'Farmer & Balcony')}</div>
                 </div>
               </div>
             </div>
@@ -253,13 +251,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="text-center max-w-2xl mx-auto mb-14">
             <span className="text-xs font-bold tracking-widest uppercase text-[#9A7653] mb-2 block">
-              THE VITALITY CYCLE
+              {uiCopy(lang, 'THE VITALITY CYCLE')}
             </span>
             <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#17382B] font-display mb-4">
-              More than a disease detector. A complete botanical intelligence loop.
+              {uiCopy(lang, 'More than a disease detector. A complete botanical intelligence loop.')}
             </h2>
             <p className="text-sm sm:text-base text-[#476353]">
-              PlantPulse isn't just “photo in, diagnosis out.” It guides every decision from early cellular stress detection to optimal harvest.
+              {uiCopy(lang, 'PlantPulse isn’t just “photo in, diagnosis out.” It guides every decision from early cellular stress detection to optimal harvest.')}
             </p>
           </div>
 
@@ -317,7 +315,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               onClick={onGetStarted}
               className="inline-flex items-center gap-1.5 text-xs font-bold text-[#245C43] bg-white border border-[#8FAF91]/40 px-4 py-2.5 rounded-xl hover:bg-[#E8F1E7] transition-colors whitespace-nowrap shadow-2xs"
             >
-              <span>Experience in Dashboard</span>
+              <span>{uiCopy(lang, 'Experience in Dashboard')}</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -329,13 +327,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="text-center max-w-2xl mx-auto mb-14">
             <span className="text-xs font-bold tracking-widest uppercase text-[#9A7653] mb-2 block">
-              CALIBRATED EXPERIENCES
+              {uiCopy(lang, 'CALIBRATED EXPERIENCES')}
             </span>
             <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#17382B] font-display mb-3">
-              Built for Acreage Fields. Perfected for Balcony Pots.
+              {uiCopy(lang, 'Built for Acreage Fields. Perfected for Balcony Pots.')}
             </h2>
             <p className="text-sm sm:text-base text-[#476353]">
-              Different growing environments face completely different risks. PlantPulse adapts its telemetry accordingly.
+              {uiCopy(lang, 'Different growing environments face completely different risks. PlantPulse adapts its telemetry accordingly.')}
             </p>
           </div>
 
@@ -345,30 +343,30 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <div className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#9A7653] bg-[#FAF8F3] px-3 py-1 rounded-full border border-[#8FAF91]/30">
-                    <span>🌾 Agricultural Intelligence</span>
+                    <span>{uiCopy(lang, '🌾 Agricultural Intelligence')}</span>
                   </div>
-                  <span className="text-xs font-mono font-semibold text-[#546b5e]">Acreage Scale</span>
+                  <span className="text-xs font-mono font-semibold text-[#546b5e]">{uiCopy(lang, 'Acreage Scale')}</span>
                 </div>
 
                 <h3 className="text-2xl font-bold text-[#245C43] font-display mb-2">
-                  For Commercial Farmers
+                  {uiCopy(lang, 'For Commercial Farmers')}
                 </h3>
                 <p className="text-sm text-[#476353] leading-relaxed mb-6">
-                  Protect cash crops, synchronize drip irrigation with rainfall forecasts, detect early blight before field outbreaks, and track soil nitrogen-phosphorus balance.
+                  {uiCopy(lang, 'Protect cash crops, synchronize drip irrigation with rainfall forecasts, detect early blight before field outbreaks, and track soil nitrogen-phosphorus balance.')}
                 </p>
 
                 <div className="space-y-2.5 mb-6">
                   <div className="flex items-center gap-2.5 text-xs text-[#245C43] font-medium">
                     <CheckCircle2 className="w-4 h-4 text-[#245C43] shrink-0" />
-                    <span>Field-scale weather forecasting & irrigation delay alerts</span>
+                    <span>{uiCopy(lang, 'Field-scale weather forecasting & irrigation delay alerts')}</span>
                   </div>
                   <div className="flex items-center gap-2.5 text-xs text-[#245C43] font-medium">
                     <CheckCircle2 className="w-4 h-4 text-[#245C43] shrink-0" />
-                    <span>Early blight & rust fungal detection with high confidence</span>
+                    <span>{uiCopy(lang, 'Early blight & rust fungal detection with high confidence')}</span>
                   </div>
                   <div className="flex items-center gap-2.5 text-xs text-[#245C43] font-medium">
                     <CheckCircle2 className="w-4 h-4 text-[#245C43] shrink-0" />
-                    <span>Gujarati & Hindi voice interaction for non-English speakers</span>
+                    <span>{uiCopy(lang, 'Gujarati & Hindi voice interaction for non-English speakers')}</span>
                   </div>
                 </div>
               </div>
@@ -377,7 +375,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 onClick={() => onSelectPersona('farmer')}
                 className="w-full inline-flex items-center justify-center gap-2 bg-[#245C43] hover:bg-[#1a4431] text-white text-sm font-semibold py-3 px-4 rounded-xl transition-colors"
               >
-                <span>Explore Farmer Experience</span>
+                <span>{uiCopy(lang, 'Explore Farmer Experience')}</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
@@ -387,30 +385,30 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <div className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#9A7653] bg-[#FAF8F3] px-3 py-1 rounded-full border border-[#8FAF91]/30">
-                    <span>🪴 Balcony & Home Botanicals</span>
+                    <span>{uiCopy(lang, '🪴 Balcony & Home Botanicals')}</span>
                   </div>
-                  <span className="text-xs font-mono font-semibold text-[#546b5e]">Container Scale</span>
+                  <span className="text-xs font-mono font-semibold text-[#546b5e]">{uiCopy(lang, 'Container Scale')}</span>
                 </div>
 
                 <h3 className="text-2xl font-bold text-[#245C43] font-display mb-2">
-                  For Urban Gardeners
+                  {uiCopy(lang, 'For Urban Gardeners')}
                 </h3>
                 <p className="text-sm text-[#476353] leading-relaxed mb-6">
-                  Nurture balcony tomatoes, terrace herbs, Tulsi and indoor tropicals. Get reminders adapted to sun hours, potting mix moisture, and seasonal care.
+                  {uiCopy(lang, 'Nurture balcony tomatoes, terrace herbs, Tulsi and indoor tropicals. Get reminders adapted to sun hours, potting mix moisture, and seasonal care.')}
                 </p>
 
                 <div className="space-y-2.5 mb-6">
                   <div className="flex items-center gap-2.5 text-xs text-[#245C43] font-medium">
                     <CheckCircle2 className="w-4 h-4 text-[#245C43] shrink-0" />
-                    <span>Container moisture & potting soil aeration diagnostics</span>
+                    <span>{uiCopy(lang, 'Container moisture & potting soil aeration diagnostics')}</span>
                   </div>
                   <div className="flex items-center gap-2.5 text-xs text-[#245C43] font-medium">
                     <CheckCircle2 className="w-4 h-4 text-[#245C43] shrink-0" />
-                    <span>Sunlight & shade hour calibration per apartment orientation</span>
+                    <span>{uiCopy(lang, 'Sunlight & shade hour calibration per apartment orientation')}</span>
                   </div>
                   <div className="flex items-center gap-2.5 text-xs text-[#245C43] font-medium">
                     <CheckCircle2 className="w-4 h-4 text-[#245C43] shrink-0" />
-                    <span>Gentle conversational plant doctor for quick troubleshooting</span>
+                    <span>{uiCopy(lang, 'Gentle conversational plant doctor for quick troubleshooting')}</span>
                   </div>
                 </div>
               </div>
@@ -419,7 +417,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 onClick={() => onSelectPersona('urban')}
                 className="w-full inline-flex items-center justify-center gap-2 bg-[#245C43] hover:bg-[#1a4431] text-white text-sm font-semibold py-3 px-4 rounded-xl transition-colors"
               >
-                <span>Explore Urban Gardener Experience</span>
+                <span>{uiCopy(lang, 'Explore Urban Gardener Experience')}</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
@@ -433,7 +431,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           <div className="flex items-center gap-4">
             <Logo size="sm" />
             <span className="text-[#8FAF91]">|</span>
-            <span>Check the Pulse. Understand the Plant. Grow Better.</span>
+            <span>{uiCopy(lang, 'Check the Pulse. Understand the Plant. Grow Better.')}</span>
           </div>
 
           <div className="flex items-center gap-6 font-medium">

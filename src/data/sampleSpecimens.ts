@@ -21,8 +21,8 @@ export const SAMPLE_SPECIMENS: SampleSpecimen[] = [
     id: 'specimen-tomato-early-blight',
     name: {
       en: 'Tomato Leaf — Concentric Target Spots',
-      gu: 'ટામેટાનું પાન — કથ્થઈ ગોળાકાર ડાઘ (અર્લી બ્લાઇટ)',
-      hi: 'टमाटर की पत्ती — केंद्नाकार भूरे धब्बे (अर्ली ब्लाइट)',
+      gu: 'ટામેટાંનું પાન — એકાગ્ર વર્તુળાકાર ભૂરા ડાઘ (પ્રારંભિક ઝુલસા રોગ)',
+      hi: 'टमाटर की पत्ती — संकेंद्रित भूरे धब्बे (अगेती झुलसा रोग)',
     },
     cropType: 'Tomato',
     expectedCondition: 'Early Blight (Alternaria solani)',
@@ -55,8 +55,8 @@ export const SAMPLE_SPECIMENS: SampleSpecimen[] = [
     id: 'specimen-chilli-leaf-curl',
     name: {
       en: 'Chilli Leaf — Upward Curling & Crinkling',
-      gu: 'મરચાંનું પાન — પાંદડા વળી જવા (લીફ કર્લ)',
-      hi: 'मिर्च की पत्ती — पत्तियों का मुड़ना (लीफ कर्ल)',
+      gu: 'મરચાંનું પાન — પાંદડાં વળી જવા',
+      hi: 'मिर्च की पत्ती — पत्तियों का मुड़ना',
     },
     cropType: 'Chilli',
     expectedCondition: 'Chilli Leaf Curl Virus (Begomovirus)',

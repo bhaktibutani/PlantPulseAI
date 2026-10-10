@@ -68,18 +68,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     // Validation
     if (mode === 'signup') {
       if (!name.trim()) {
-        setError('Please enter your full name.');
+        setError(t.extra.authFullNameRequired);
         return;
       }
     }
 
     if (!email.trim() || !email.includes('@')) {
-      setError('Please provide a valid email address.');
+      setError(t.extra.authEmailInvalid);
       return;
     }
 
     if (!password || password.length < 6) {
-      setError('Password must contain at least 6 characters.');
+      setError(t.extra.authPasswordTooShort);
       return;
     }
 
@@ -101,7 +101,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         const data = await response.json();
 
         if (!response.ok) {
-          throw new Error(data.error || 'Failed to register account.');
+          throw new Error(response.status === 409 ? t.extra.authDuplicateEmail : t.extra.authRegisterFailed);
         }
 
         if (data.token) {
@@ -122,7 +122,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         const data = await response.json();
 
         if (!response.ok) {
-          throw new Error(data.error || 'Invalid email or password.');
+          throw new Error(t.extra.authInvalidCredentials);
         }
 
         if (data.token) {
@@ -132,7 +132,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         onSuccess(data.user, data.token, false);
       }
     } catch (err: any) {
-      setError(err.message || 'Authentication failed. Please check connection.');
+      setError(err instanceof TypeError ? t.extra.authConnectionError : (err.message || t.extra.authConnectionError));
     } finally {
       setIsLoading(false);
     }
@@ -286,7 +286,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       required
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      placeholder={lang === 'gu' ? 'દા.ત. ભક્તિ ભુતાણી' : lang === 'hi' ? 'उदा. भक्ति भुतानी' : 'e.g. Bhakti Butani'}
+                      placeholder={t.extra.emailNamePlaceholder}
                       className="w-full pl-9 pr-3 py-2.5 text-sm rounded-xl border border-[#8FAF91]/40 bg-white focus:outline-none focus:ring-2 focus:ring-[#245C43]"
                     />
                   </div>
@@ -361,7 +361,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="bhaktibutani14@gmail.com"
+                  placeholder={t.extra.emailPlaceholder}
                   className="w-full pl-9 pr-3 py-2.5 text-sm rounded-xl border border-[#8FAF91]/40 bg-white focus:outline-none focus:ring-2 focus:ring-[#245C43]"
                 />
               </div>
@@ -376,7 +376,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
+                  placeholder={t.extra.passwordPlaceholder}
                   className="w-full pl-9 pr-3 py-2.5 text-sm rounded-xl border border-[#8FAF91]/40 bg-white focus:outline-none focus:ring-2 focus:ring-[#245C43]"
                 />
               </div>

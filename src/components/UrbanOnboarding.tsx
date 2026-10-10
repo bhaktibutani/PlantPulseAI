@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Logo } from './Logo.tsx';
 import { GUJARAT_DISTRICTS, INITIAL_URBAN_PLANTS, URBAN_GROWING_LOCATIONS } from '../data/gujaratLocations.ts';
-import { Language, translations } from '../data/translations.ts';
+import { cropDisplayName, Language, localizedText, translations } from '../data/translations.ts';
 import { ArrowLeft, ArrowRight, Check, MapPin, Sun, Droplets, Home, Globe } from 'lucide-react';
 
 export interface UrbanOnboardingData {
@@ -39,9 +39,10 @@ export const UrbanOnboarding: React.FC<UrbanOnboardingProps> = ({
   const currentDistrict =
     GUJARAT_DISTRICTS.find((d) => d.id === selectedDistrictId) || GUJARAT_DISTRICTS[0];
 
-  const [selectedCityArea, setSelectedCityArea] = useState<string>(
-    initialData?.cityArea || currentDistrict.cities[lang][0]
-  );
+  const initialCityAreaIndex = (['en', 'gu', 'hi'] as const)
+    .map((language) => currentDistrict.cities[language].indexOf(initialData?.cityArea || ''))
+    .find((index) => index >= 0) ?? 0;
+  const [selectedCityAreaIndex, setSelectedCityAreaIndex] = useState(initialCityAreaIndex);
 
   const [growingLocationId, setGrowingLocationId] = useState<string>(
     initialData?.growingLocationId || 'balcony'
@@ -56,7 +57,7 @@ export const UrbanOnboarding: React.FC<UrbanOnboardingProps> = ({
     setSelectedDistrictId(distId);
     const districtObj = GUJARAT_DISTRICTS.find((d) => d.id === distId);
     if (districtObj) {
-      setSelectedCityArea(districtObj.cities[lang][0]);
+      setSelectedCityAreaIndex(0);
     }
   };
 
@@ -69,11 +70,11 @@ export const UrbanOnboarding: React.FC<UrbanOnboardingProps> = ({
       state: 'Gujarat',
       districtId: selectedDistrictId,
       districtName: currentDistrict.name[lang],
-      cityArea: selectedCityArea,
+      cityArea: currentDistrict.cities[lang][selectedCityAreaIndex],
       growingLocationId,
       growingLocationName: locObj.name[lang],
       plantId: selectedPlantId,
-      plantName: plantObj.name[lang],
+      plantName: cropDisplayName(lang, plantObj.name[lang]),
     });
   };
 
@@ -159,7 +160,7 @@ export const UrbanOnboarding: React.FC<UrbanOnboardingProps> = ({
               </label>
               <div className="flex items-center gap-2 p-3 rounded-xl bg-[#FAF8F3] border border-[#8FAF91]/30 text-xs font-bold text-[#245C43]">
                 <MapPin className="w-4 h-4 text-[#9A7653] shrink-0" />
-                <span>Gujarat (ગુજરાત)</span>
+                <span>{t.extra.stateGujarat}</span>
               </div>
             </div>
 
@@ -174,7 +175,7 @@ export const UrbanOnboarding: React.FC<UrbanOnboardingProps> = ({
               >
                 {GUJARAT_DISTRICTS.map((dist) => (
                   <option key={dist.id} value={dist.id}>
-                    {dist.name[lang]} ({dist.name.en})
+                    {dist.name[lang]}
                   </option>
                 ))}
               </select>
@@ -187,12 +188,12 @@ export const UrbanOnboarding: React.FC<UrbanOnboardingProps> = ({
               {t.cityLabel} ({currentDistrict.name[lang]})
             </label>
             <select
-              value={selectedCityArea}
-              onChange={(e) => setSelectedCityArea(e.target.value)}
+              value={selectedCityAreaIndex}
+              onChange={(e) => setSelectedCityAreaIndex(Number(e.target.value))}
               className="w-full p-3 text-xs sm:text-sm font-semibold rounded-xl border border-[#8FAF91]/40 bg-white text-[#17382B] focus:outline-none focus:ring-2 focus:ring-[#245C43]"
             >
               {currentDistrict.cities[lang].map((city, idx) => (
-                <option key={idx} value={city}>
+              <option key={idx} value={idx}>
                   {city}
                 </option>
               ))}
@@ -249,10 +250,10 @@ export const UrbanOnboarding: React.FC<UrbanOnboardingProps> = ({
                   >
                     <span className="text-2xl">{plant.icon}</span>
                     <span className="text-xs font-bold text-[#17382B]">
-                      {plant.name[lang]}
+                      {cropDisplayName(lang, plant.name[lang])}
                     </span>
                     <span className="text-[10px] text-[#546b5e] truncate max-w-full">
-                      {plant.care}
+                      {localizedText(lang, plant.care)}
                     </span>
                   </button>
                 );
@@ -275,7 +276,7 @@ export const UrbanOnboarding: React.FC<UrbanOnboardingProps> = ({
 
       {/* Footer */}
       <footer className="w-full max-w-5xl mx-auto px-6 py-4 border-t border-[#8FAF91]/25 text-center text-xs text-[#6B8576]">
-        <span>PlantPulse Botanical Engine · Microclimate container and sunlight hours calibrated</span>
+        <span>{t.extra.urbanOnboardingFooter}</span>
       </footer>
     </div>
   );

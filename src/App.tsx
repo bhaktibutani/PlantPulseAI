@@ -12,7 +12,7 @@ import { Dashboard } from './components/Dashboard.tsx';
 import { ScanStudio, SavedPlantItem } from './components/ScanStudio.tsx';
 import { PlantDoctorView } from './components/PlantDoctorView.tsx';
 import { AuthModal, AuthUser } from './components/AuthModal.tsx';
-import { Language } from './data/translations.ts';
+import { Language, translations } from './data/translations.ts';
 
 export type ActiveScreen =
   | 'landing'
@@ -42,6 +42,13 @@ export default function App() {
       localStorage.setItem('plantpulse_lang', newLang);
     } catch {}
   };
+  useEffect(() => {
+    const locale = lang === 'gu' ? 'gu-IN' : lang === 'hi' ? 'hi-IN' : 'en';
+    document.documentElement.lang = locale;
+    document.title = `${translations[lang].appName} — ${translations[lang].tagline}`;
+    const description = document.querySelector<HTMLMetaElement>('meta[name="description"]');
+    if (description) description.content = translations[lang].taglineSub;
+  }, [lang]);
   const [isGuest, setIsGuest] = useState(false);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [authToken, setAuthToken] = useState<string | null>(null);
@@ -118,6 +125,7 @@ export default function App() {
           if (data.success && data.user) {
             setCurrentUser(data.user);
             setAuthToken(token);
+            setScreen('dashboard');
             // Apply stored role
             if (data.user.role === 'farmer') {
               setUserType('farmer');

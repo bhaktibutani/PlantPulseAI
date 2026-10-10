@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Logo } from './Logo.tsx';
 import { GUJARAT_DISTRICTS, INITIAL_FARMER_CROPS } from '../data/gujaratLocations.ts';
-import { Language, translations } from '../data/translations.ts';
+import { cropDisplayName, Language, translations } from '../data/translations.ts';
 import { ArrowLeft, ArrowRight, Check, MapPin, Sprout, Trees, Layers, Sparkles, Globe } from 'lucide-react';
 
 export interface FarmerOnboardingData {
@@ -38,9 +38,10 @@ export const FarmerOnboarding: React.FC<FarmerOnboardingProps> = ({
   const currentDistrict =
     GUJARAT_DISTRICTS.find((d) => d.id === selectedDistrictId) || GUJARAT_DISTRICTS[0];
 
-  const [selectedVillage, setSelectedVillage] = useState<string>(
-    initialData?.village || currentDistrict.villages[lang][0]
-  );
+  const initialVillageIndex = (['en', 'gu', 'hi'] as const)
+    .map((language) => currentDistrict.villages[language].indexOf(initialData?.village || ''))
+    .find((index) => index >= 0) ?? 0;
+  const [selectedVillageIndex, setSelectedVillageIndex] = useState(initialVillageIndex);
 
   const [farmName, setFarmName] = useState<string>(
     initialData?.farmName || (lang === 'gu' ? 'મુખ્ય ખેતર પ્લોટ ૧' : lang === 'hi' ? 'मुख्य खेत प्लॉट १' : 'Kisan Field Plot 1')
@@ -55,7 +56,7 @@ export const FarmerOnboarding: React.FC<FarmerOnboardingProps> = ({
     setSelectedDistrictId(distId);
     const districtObj = GUJARAT_DISTRICTS.find((d) => d.id === distId);
     if (districtObj) {
-      setSelectedVillage(districtObj.villages[lang][0]);
+      setSelectedVillageIndex(0);
     }
   };
 
@@ -66,10 +67,10 @@ export const FarmerOnboarding: React.FC<FarmerOnboardingProps> = ({
       state: 'Gujarat',
       districtId: selectedDistrictId,
       districtName: currentDistrict.name[lang],
-      village: selectedVillage,
+      village: currentDistrict.villages[lang][selectedVillageIndex],
       farmName: farmName.trim() || 'My Farm Plot',
       cropId: selectedCropId,
-      cropName: cropObj.name[lang],
+      cropName: cropDisplayName(lang, cropObj.name[lang]),
     });
   };
 
@@ -155,7 +156,7 @@ export const FarmerOnboarding: React.FC<FarmerOnboardingProps> = ({
               </label>
               <div className="flex items-center gap-2 p-3 rounded-xl bg-[#FAF8F3] border border-[#8FAF91]/30 text-xs font-bold text-[#245C43]">
                 <MapPin className="w-4 h-4 text-[#9A7653] shrink-0" />
-                <span>Gujarat (ગુજરાત)</span>
+                <span>{t.extra.stateGujarat}</span>
               </div>
             </div>
 
@@ -170,7 +171,7 @@ export const FarmerOnboarding: React.FC<FarmerOnboardingProps> = ({
               >
                 {GUJARAT_DISTRICTS.map((dist) => (
                   <option key={dist.id} value={dist.id}>
-                    {dist.name[lang]} ({dist.name.en})
+                    {dist.name[lang]}
                   </option>
                 ))}
               </select>
@@ -183,12 +184,12 @@ export const FarmerOnboarding: React.FC<FarmerOnboardingProps> = ({
               {t.villageLabel} ({currentDistrict.name[lang]})
             </label>
             <select
-              value={selectedVillage}
-              onChange={(e) => setSelectedVillage(e.target.value)}
+              value={selectedVillageIndex}
+              onChange={(e) => setSelectedVillageIndex(Number(e.target.value))}
               className="w-full p-3 text-xs sm:text-sm font-semibold rounded-xl border border-[#8FAF91]/40 bg-white text-[#17382B] focus:outline-none focus:ring-2 focus:ring-[#245C43]"
             >
               {currentDistrict.villages[lang].map((village, idx) => (
-                <option key={idx} value={village}>
+              <option key={idx} value={idx}>
                   {village}
                 </option>
               ))}
@@ -204,7 +205,7 @@ export const FarmerOnboarding: React.FC<FarmerOnboardingProps> = ({
               type="text"
               value={farmName}
               onChange={(e) => setFarmName(e.target.value)}
-              placeholder="e.g. Plot 4B / Vaibhav Farm"
+              placeholder={t.extra.farmNamePlaceholder}
               className="w-full p-3 text-xs sm:text-sm rounded-xl border border-[#8FAF91]/40 bg-white text-[#17382B] focus:outline-none focus:ring-2 focus:ring-[#245C43]"
             />
           </div>
@@ -230,7 +231,7 @@ export const FarmerOnboarding: React.FC<FarmerOnboardingProps> = ({
                   >
                     <span className="text-2xl">{crop.icon}</span>
                     <span className="text-xs font-bold text-[#17382B]">
-                      {crop.name[lang]}
+                      {cropDisplayName(lang, crop.name[lang])}
                     </span>
                     <span className="text-[10px] text-[#546b5e] truncate max-w-full">
                       {crop.variety}
@@ -256,7 +257,7 @@ export const FarmerOnboarding: React.FC<FarmerOnboardingProps> = ({
 
       {/* Footer */}
       <footer className="w-full max-w-5xl mx-auto px-6 py-4 border-t border-[#8FAF91]/25 text-center text-xs text-[#6B8576]">
-        <span>PlantPulse Agronomic Engine · Hyper-local rain & soil evaporation calibrated</span>
+        <span>{t.extra.farmerOnboardingFooter}</span>
       </footer>
     </div>
   );

@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Logo } from './Logo.tsx';
 import { UserType } from './UserTypeSelection.tsx';
-import { Language, translations } from '../data/translations.ts';
+import { cropDisplayName, Language, localizedText, translations, uiCopy } from '../data/translations.ts';
 import { FarmerOnboardingData } from './FarmerOnboarding.tsx';
 import { UrbanOnboardingData } from './UrbanOnboarding.tsx';
 import { SavedPlantItem } from './ScanStudio.tsx';
 import { getWeatherData, WeatherModel } from '../data/weatherData.ts';
-import { GUJARAT_DISTRICTS } from '../data/gujaratLocations.ts';
+import { GUJARAT_DISTRICTS, localizeGujaratLocation } from '../data/gujaratLocations.ts';
 import {
   Activity,
   AlertTriangle,
@@ -380,20 +380,35 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }
   }, [authToken, currentUser]);
 
+  useEffect(() => {
+    if (activeSidebarNav === 'Urban Farming Intelligence') {
+      setUrbanIntelligence(null);
+      runUrbanIntelligence();
+    } else if (activeSidebarNav === 'Smart Recommendations') {
+      setPersonalizedRecs(null);
+      fetchPersonalizedRecs();
+    }
+  }, [lang]);
+
   // Weather data resolved for current district
   const weather = getWeatherData(currentDistrictId);
+  const activeDistrictName = GUJARAT_DISTRICTS.find((district) => district.id === currentDistrictId)?.name[lang] || currentDistrictId;
 
-  const activeCropName = userType === 'farmer'
-    ? (farmerData?.cropName || 'Tomato')
-    : (urbanData?.plantName || 'Tomato');
+  const activeCropName = cropDisplayName(
+    lang,
+    userType === 'farmer' ? (farmerData?.cropName || 'Tomato') : (urbanData?.plantName || 'Tomato')
+  );
+  const activeCropId = userType === 'farmer'
+    ? (farmerData?.cropId || 'tomato')
+    : (urbanData?.plantId || 'tomato');
 
   const activeLocationLabel = userType === 'farmer'
-    ? `${currentDistrictId.toUpperCase()} · ${farmerData?.village || 'Gondal Rural'}`
-    : `${currentDistrictId.toUpperCase()} · ${urbanData?.cityArea || 'City Balcony'} (${urbanData?.growingLocationName || 'Balcony'})`;
+    ? `${activeDistrictName} · ${localizeGujaratLocation(farmerData?.village || 'Gondal Rural', lang)}`
+    : `${activeDistrictName} · ${localizedText(lang, localizeGujaratLocation(urbanData?.cityArea || 'City Balcony', lang))} (${localizedText(lang, urbanData?.growingLocationName || 'Balcony')})`;
 
   const farmOrBalconyTitle = userType === 'farmer'
-    ? (farmerData?.farmName || 'Kisan Field Plot 1')
-    : `${urbanData?.growingLocationName || 'Balcony'} Garden`;
+    ? localizedText(lang, farmerData?.farmName || 'Kisan Field Plot 1')
+    : `${localizedText(lang, urbanData?.growingLocationName || 'Balcony')} ${localizedText(lang, 'Garden')}`;
 
   return (
     <div className="min-h-screen bg-[#F7F5EF] flex flex-col md:flex-row text-[#17382B] selection:bg-[#E8F1E7] selection:text-[#245C43]">
@@ -426,7 +441,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 }`}
               >
                 <span>🪴</span>
-                <span>{lang === 'gu' ? 'અર્બન' : lang === 'hi' ? 'शहरी' : 'Urban Planner'}</span>
+                <span>{lang === 'gu' ? 'શહેરી' : lang === 'hi' ? 'शहरी' : t.extra.urbanRoleShort}</span>
               </button>
             </div>
           </div>
@@ -472,7 +487,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
               {tasks.filter((t) => !t.completed).length > 0 && (
                 <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-[#E5A93D] text-[#17382B] font-bold">
-                  {tasks.filter((t) => !t.completed).length} due
+                  {tasks.filter((t) => !t.completed).length} {uiCopy(lang, 'due')}
                 </span>
               )}
             </button>
@@ -515,7 +530,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <span>{t.navSmartRecs}</span>
               </div>
               <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#9A7653] text-white font-mono">
-                Pulse
+                {uiCopy(lang, 'Pulse')}
               </span>
             </button>
 
@@ -531,7 +546,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <span>{t.navScanPlant}</span>
               </div>
               <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-white/20 font-mono">
-                Vision AI
+                {uiCopy(lang, 'Vision AI')}
               </span>
             </button>
 
@@ -638,14 +653,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <div className="text-left min-w-0">
                 <span
                   className="text-xs font-bold text-[#17382B] block leading-tight truncate"
-                  title={currentUser?.name || (isGuest ? 'Guest Explorer' : 'Guest')}
+                  title={currentUser?.name || (isGuest ? uiCopy(lang, 'Guest Explorer') : uiCopy(lang, 'Guest'))}
                 >
-                  {currentUser ? currentUser.name : (isGuest ? (lang === 'gu' ? 'અતિથિ' : lang === 'hi' ? 'अतिथि' : 'Guest Explorer') : 'Bhakti Butani')}
+                  {currentUser ? currentUser.name : (isGuest ? uiCopy(lang, 'Guest Explorer') : 'PlantPulse')}
                 </span>
                 <span className="text-[11px] text-[#546b5e] block truncate">
                   {currentUser
-                    ? (currentUser.role === 'farmer' ? (lang === 'gu' ? '🌾 કિસાન મિત્ર' : lang === 'hi' ? '🌾 किसान साथी' : '🌾 Kisan Partner') : (lang === 'gu' ? '🏙️ અર્બન ગાર્ડનર' : lang === 'hi' ? '🏙️ शहरी योजनाकार' : '🏙️ Urban Planner'))
-                    : (isGuest ? (lang === 'gu' ? 'અતિથિ સભ્ય' : lang === 'hi' ? 'अतिथि सदस्य' : 'Guest Explorer') : userType === 'farmer' ? (lang === 'gu' ? 'કિસાન પ્રો' : lang === 'hi' ? 'किसान प्रो' : 'Kisan Pro') : (lang === 'gu' ? 'અર્બન સભ્ય' : lang === 'hi' ? 'शहरी सदस्य' : 'Urban Member'))}
+                    ? (currentUser.role === 'farmer' ? `🌾 ${uiCopy(lang, 'Kisan Partner')}` : `🏙️ ${uiCopy(lang, 'Urban Planner')}`)
+                    : (isGuest ? uiCopy(lang, 'Guest') : userType === 'farmer' ? uiCopy(lang, 'Kisan Pro') : uiCopy(lang, 'Urban Member'))}
                 </span>
               </div>
             </div>
@@ -694,7 +709,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-[#17382B] font-display">
               {currentUser
-                ? `Welcome, ${currentUser.name}`
+                ? `${uiCopy(lang, 'Welcome,')} ${currentUser.name}`
                 : userType === 'farmer'
                 ? t.greetingFarmer
                 : t.greetingUrban}{' '}
@@ -702,8 +717,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </h1>
             <p className="text-sm text-[#476353] mt-1 font-normal">
               {userType === 'farmer'
-                ? `Field plot "${farmOrBalconyTitle}" is synchronized with local Gujarat weather sensors.`
-                : `Your "${farmOrBalconyTitle}" microclimate is calibrated for ${activeCropName}.`}
+                ? t.extra.dashboardFieldSummary
+                    .replace('{place}', farmOrBalconyTitle)
+                    .replace('{district}', localizeGujaratLocation(currentDistrictId, lang))
+                : t.extra.dashboardGardenSummary.replace('{place}', farmOrBalconyTitle).replace('{crop}', activeCropName)}
             </p>
           </div>
 
@@ -713,7 +730,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               className="inline-flex items-center gap-1.5 text-xs font-bold text-[#245C43] bg-white border border-[#8FAF91]/40 px-3.5 py-2 rounded-xl hover:bg-[#E8F1E7] transition-colors shadow-2xs cursor-pointer"
             >
               <SlidersHorizontal className="w-3.5 h-3.5" />
-              <span>{lang === 'gu' ? 'વિગતો બદલો' : lang === 'hi' ? 'સેટિંગ બદલો' : 'Calibrate Profile'}</span>
+              <span>{lang === 'gu' ? 'વિગતો બદલો' : lang === 'hi' ? 'प्रोफ़ाइल बदलें' : uiCopy(lang, 'Change Profile')}</span>
             </button>
 
             <button
@@ -736,13 +753,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <div>
                   <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-widest text-[#9A7653] mb-1">
                     <Leaf className="w-4 h-4 text-[#245C43]" />
-                    <span>Monitored Botanical Ledger</span>
+                    <span>{uiCopy(lang, 'Monitored Botanical Ledger')}</span>
                   </div>
                   <h2 className="text-2xl font-black text-[#17382B] font-display">
-                    {userType === 'farmer' ? 'Farm Acreage Crops' : 'Urban Balcony & Container Garden'}
+                    {userType === 'farmer' ? uiCopy(lang, 'Farm Acreage Crops') : uiCopy(lang, 'Urban Balcony & Container Garden')}
                   </h2>
                   <p className="text-xs text-[#546b5e] mt-1">
-                    Track the lifecycle, chlorophyll vigor, and disease immunity history of your plants.
+                    {uiCopy(lang, 'Track the lifecycle, chlorophyll vigor, and disease immunity history of your plants.')}
                   </p>
                 </div>
 
@@ -752,7 +769,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     className="inline-flex items-center gap-1.5 bg-[#245C43] text-white text-xs font-bold px-4 py-2.5 rounded-xl hover:bg-[#1a4431] transition-colors cursor-pointer shadow-xs"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>Add Plant to Monitor</span>
+                    <span>{uiCopy(lang, 'Add Plant to Monitor')}</span>
                   </button>
                 </div>
               </div>
@@ -770,8 +787,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           {plant.name.toLowerCase().includes('tomato') ? '🍅' : plant.name.toLowerCase().includes('cotton') ? '🌾' : '🪴'}
                         </div>
                         <div>
-                          <h4 className="text-sm font-bold text-[#17382B]">{plant.name}</h4>
-                          <span className="text-[11px] text-[#546b5e] italic block">{plant.species || 'Botanical specimen'}</span>
+                          <h4 className="text-sm font-bold text-[#17382B]">{localizedText(lang, plant.name)}</h4>
+                          <span className="text-[11px] text-[#546b5e] italic block">{localizedText(lang, plant.species || uiCopy(lang, 'Botanical specimen'))}</span>
                         </div>
                       </div>
                       <span className="font-mono text-sm font-black text-[#245C43]">
@@ -781,12 +798,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
                     <div className="grid grid-cols-2 gap-2 text-[11px] pt-1 border-t border-[#8FAF91]/20">
                       <div>
-                        <span className="text-[#546b5e] block">Sunlight</span>
-                        <strong className="text-[#17382B] capitalize">{plant.sunlight || 'Full Sun'}</strong>
+                        <span className="text-[#546b5e] block">{uiCopy(lang, 'Sunlight')}</span>
+                        <strong className="text-[#17382B] capitalize">{plant.sunlight || uiCopy(lang, 'Full Sun')}</strong>
                       </div>
                       <div>
-                        <span className="text-[#546b5e] block">Watering</span>
-                        <strong className="text-[#17382B] capitalize">{plant.watering_frequency || 'Daily'}</strong>
+                        <span className="text-[#546b5e] block">{uiCopy(lang, 'Watering')}</span>
+                        <strong className="text-[#17382B] capitalize">{plant.watering_frequency || uiCopy(lang, 'Daily')}</strong>
                       </div>
                     </div>
 
@@ -795,13 +812,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         onClick={() => onOpenScanStudio(plant.name)}
                         className="text-xs font-bold text-[#245C43] hover:underline cursor-pointer"
                       >
-                        Run Optical Scan →
+                        {uiCopy(lang, 'Run Optical Scan →')}
                       </button>
                       <button
                         onClick={() => onOpenDoctor(`How is my ${plant.name} doing?`)}
                         className="text-xs font-semibold text-[#9A7653] hover:underline cursor-pointer"
                       >
-                        Ask Doctor
+                        {uiCopy(lang, 'Ask Doctor')}
                       </button>
                     </div>
                   </div>
@@ -821,13 +838,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <div>
                   <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-widest text-[#245C43] mb-1">
                     <Bell className="w-4 h-4 text-[#245C43]" />
-                    <span>Intelligent Care Protocol · Phase 3.6</span>
+                    <span>{uiCopy(lang, 'Plant Care Tasks')}</span>
                   </div>
                   <h2 className="text-2xl font-black text-[#17382B] font-display">
-                    Plant Care Tasks & Smart Reminders
+                    {uiCopy(lang, 'Plant Care Tasks & Smart Reminders')}
                   </h2>
                   <p className="text-xs text-[#546b5e] mt-1">
-                    Real-time irrigation reminders, bio-fertilizer feeding cycles, and diagnostic leaf inspections.
+                    {uiCopy(lang, 'Real-time irrigation reminders, bio-fertilizer feeding cycles, and diagnostic leaf inspections.')}
                   </p>
                 </div>
 
@@ -837,7 +854,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     className="inline-flex items-center gap-1.5 bg-[#245C43] text-white text-xs font-bold px-4 py-2.5 rounded-xl hover:bg-[#1a4431] transition-colors cursor-pointer shadow-xs"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>Add Care Reminder</span>
+                    <span>{uiCopy(lang, 'Add Care Reminder')}</span>
                   </button>
                 </div>
               </div>
@@ -850,7 +867,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     taskFilter === 'all' ? 'bg-[#245C43] text-white' : 'bg-[#FAF8F3] text-[#476353] hover:bg-[#E8F1E7]'
                   }`}
                 >
-                  All Tasks ({tasks.length})
+                  {uiCopy(lang, 'All Tasks')} ({tasks.length})
                 </button>
                 <button
                   onClick={() => setTaskFilter('pending')}
@@ -858,7 +875,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     taskFilter === 'pending' ? 'bg-[#245C43] text-white' : 'bg-[#FAF8F3] text-[#476353] hover:bg-[#E8F1E7]'
                   }`}
                 >
-                  Pending ({tasks.filter((t) => !t.completed).length})
+                  {uiCopy(lang, 'Pending')} ({tasks.filter((t) => !t.completed).length})
                 </button>
                 <button
                   onClick={() => setTaskFilter('completed')}
@@ -866,7 +883,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     taskFilter === 'completed' ? 'bg-[#245C43] text-white' : 'bg-[#FAF8F3] text-[#476353] hover:bg-[#E8F1E7]'
                   }`}
                 >
-                  Completed ({tasks.filter((t) => t.completed).length})
+                  {uiCopy(lang, 'Completed')} ({tasks.filter((t) => t.completed).length})
                 </button>
               </div>
 
@@ -875,7 +892,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 {isLoadingTasks ? (
                   <div className="p-8 text-center text-xs text-[#546b5e]">
                     <RefreshCw className="w-5 h-5 animate-spin mx-auto text-[#245C43] mb-2" />
-                    <span>Loading care tasks...</span>
+                    <span>{uiCopy(lang, 'Loading care tasks...')}</span>
                   </div>
                 ) : (
                   tasks
@@ -916,11 +933,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                 {task.task_type}
                               </span>
                               <span className="text-[11px] text-[#9A7653] font-bold">
-                                Due: {task.due_date}
+                                {uiCopy(lang, 'Due')}: {localizedText(lang, task.due_date)}
                               </span>
                             </div>
                             <h4 className={`text-sm font-bold mt-1 ${task.completed ? 'line-through text-[#546b5e]' : 'text-[#17382B]'}`}>
-                              {task.title}
+                              {localizedText(lang, task.title)}
                             </h4>
                             {task.description && (
                               <p className="text-xs text-[#546b5e] mt-0.5 leading-relaxed">
@@ -933,7 +950,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         <span className={`text-[10px] font-bold px-2.5 py-1 rounded-lg ${
                           task.completed ? 'bg-[#E8F1E7] text-[#245C43]' : 'bg-[#FFF9EB] text-[#7A5416]'
                         }`}>
-                          {task.completed ? 'Completed' : 'Action Required'}
+                          {task.completed ? uiCopy(lang, 'Completed') : uiCopy(lang, 'Action Required')}
                         </span>
                       </div>
                     ))
@@ -953,13 +970,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <div>
                   <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-widest text-[#245C43] mb-1">
                     <Compass className="w-4 h-4 text-[#245C43]" />
-                    <span>Spatial Urban Agronomy · Phase 3.3</span>
+                    <span>{uiCopy(lang, 'Urban Farming Intelligence')}</span>
                   </div>
                   <h2 className="text-2xl font-black text-[#17382B] font-display">
-                    Urban Farming Intelligence
+                    {uiCopy(lang, 'Urban Farming Intelligence')}
                   </h2>
                   <p className="text-xs text-[#546b5e] mt-1">
-                    Maximize vegetable and botanical yield in limited city spaces, balconies, and rooftops.
+                    {uiCopy(lang, 'Maximize vegetable and botanical yield in limited city spaces, balconies, and rooftops.')}
                   </p>
                 </div>
 
@@ -969,7 +986,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   className="inline-flex items-center gap-2 bg-[#245C43] hover:bg-[#1a4431] text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs transition-colors cursor-pointer"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isLoadingUrban ? 'animate-spin' : ''}`} />
-                  <span>{isLoadingUrban ? 'Calculating with AI...' : 'Recalculate Spatial Plan'}</span>
+                  <span>{uiCopy(lang, isLoadingUrban ? 'Calculating with AI...' : 'Recalculate Spatial Plan')}</span>
                 </button>
               </div>
 
@@ -977,40 +994,40 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-5 pb-5 border-b border-[#8FAF91]/20">
                 <div>
                   <label className="text-[11px] font-bold text-[#546b5e] uppercase block mb-1">
-                    Growing Space
+                    {uiCopy(lang, 'Growing Space')}
                   </label>
                   <select
                     value={urbanSpaceType}
                     onChange={(e) => setUrbanSpaceType(e.target.value)}
                     className="w-full bg-[#FAF8F3] border border-[#8FAF91]/35 rounded-xl px-3 py-2 text-xs font-bold text-[#17382B]"
                   >
-                    <option value="balcony">Balcony Container Garden</option>
-                    <option value="terrace">Rooftop / Terrace Garden</option>
-                    <option value="window_sill">Window Sill Herb Box</option>
-                    <option value="vertical_wall">Vertical Living Wall</option>
-                    <option value="hydroponic_tower">Hydroponic NFT / Tower</option>
+                    <option value="balcony">{uiCopy(lang, 'Balcony Container Garden')}</option>
+                    <option value="terrace">{uiCopy(lang, 'Rooftop / Terrace Garden')}</option>
+                    <option value="window_sill">{uiCopy(lang, 'Window Sill Herb Box')}</option>
+                    <option value="vertical_wall">{uiCopy(lang, 'Vertical Living Wall')}</option>
+                    <option value="hydroponic_tower">{uiCopy(lang, 'Hydroponic NFT / Tower')}</option>
                   </select>
                 </div>
 
                 <div>
                   <label className="text-[11px] font-bold text-[#546b5e] uppercase block mb-1">
-                    Container Type
+                    {uiCopy(lang, 'Container Type')}
                   </label>
                   <select
                     value={urbanContainer}
                     onChange={(e) => setUrbanContainer(e.target.value)}
                     className="w-full bg-[#FAF8F3] border border-[#8FAF91]/35 rounded-xl px-3 py-2 text-xs font-bold text-[#17382B]"
                   >
-                    <option value="terracotta_pots">Terracotta / Clay Pots (Breathable)</option>
-                    <option value="fabric_growbags">Fabric Grow Bags (Aeration)</option>
-                    <option value="self_watering_boxes">Self-Watering Sub-Irrigation Boxes</option>
-                    <option value="raised_wooden_bed">Raised Wooden Bed</option>
+                    <option value="terracotta_pots">{uiCopy(lang, 'Terracotta / Clay Pots (Breathable)')}</option>
+                    <option value="fabric_growbags">{uiCopy(lang, 'Fabric Grow Bags (Aeration)')}</option>
+                    <option value="self_watering_boxes">{uiCopy(lang, 'Self-Watering Sub-Irrigation Boxes')}</option>
+                    <option value="raised_wooden_bed">{uiCopy(lang, 'Raised Wooden Bed')}</option>
                   </select>
                 </div>
 
                 <div>
                   <label className="text-[11px] font-bold text-[#546b5e] uppercase block mb-1">
-                    Direct Sunlight Hours ({urbanSunHours} hrs)
+                    {uiCopy(lang, 'Direct Sunlight Hours')} ({urbanSunHours})
                   </label>
                   <input
                     type="range"
@@ -1027,15 +1044,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
               {isLoadingUrban ? (
                 <div className="py-16 text-center text-xs text-[#546b5e]">
                   <RefreshCw className="w-8 h-8 animate-spin mx-auto text-[#245C43] mb-3" />
-                  <p className="font-bold text-[#17382B]">Consulting Gemini Urban Agronomy Model...</p>
-                  <p className="text-[11px] mt-1">Analyzing heat absorption, substrate aeration, and companion yields...</p>
+                  <p className="font-bold text-[#17382B]">{uiCopy(lang, 'Calculating with AI...')}</p>
+                  <p className="text-[11px] mt-1">{uiCopy(lang, 'Microclimate & Thermal Radiation')}</p>
                 </div>
               ) : urbanIntelligence ? (
                 <div className="space-y-5 pt-5">
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div className="p-4 rounded-2xl bg-[#E8F1E7] border border-[#8FAF91]/40 text-center">
                       <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#245C43] block">
-                        Space Suitability Score
+                        {uiCopy(lang, 'Space Suitability Score')}
                       </span>
                       <span className="text-3xl font-black text-[#17382B] font-mono mt-1 block">
                         {urbanIntelligence.spaceSuitabilityScore} / 100
@@ -1044,7 +1061,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
                     <div className="p-4 rounded-2xl bg-[#FAF8F3] border border-[#8FAF91]/30">
                       <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#9A7653] block">
-                        Estimated Monthly Harvest
+                        {uiCopy(lang, 'Estimated Monthly Harvest')}
                       </span>
                       <span className="text-sm font-bold text-[#17382B] mt-1 block">
                         {urbanIntelligence.estimatedMonthlyYield}
@@ -1053,7 +1070,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
                     <div className="p-4 rounded-2xl bg-[#FAF8F3] border border-[#8FAF91]/30">
                       <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#245C43] block">
-                        Water Conservation Mode
+                        {uiCopy(lang, 'Water Conservation Mode')}
                       </span>
                       <span className="text-xs text-[#395045] mt-1 block">
                         {urbanIntelligence.waterSavingStrategy}
@@ -1064,14 +1081,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   {/* Microclimate and Substrate Formula */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                     <div className="p-4 rounded-2xl bg-[#FAF8F3] border border-[#8FAF91]/30 space-y-1.5">
-                      <strong className="text-[#17382B] block text-sm">Microclimate & Thermal Radiation</strong>
+                      <strong className="text-[#17382B] block text-sm">{uiCopy(lang, 'Microclimate & Thermal Radiation')}</strong>
                       <p className="text-[#476353] leading-relaxed">
                         {urbanIntelligence.microclimateAnalysis}
                       </p>
                     </div>
 
                     <div className="p-4 rounded-2xl bg-[#FAF8F3] border border-[#8FAF91]/30 space-y-1.5">
-                      <strong className="text-[#17382B] block text-sm">Optimal Potting Substrate Formula</strong>
+                      <strong className="text-[#17382B] block text-sm">{uiCopy(lang, 'Optimal Potting Substrate Formula')}</strong>
                       <p className="text-[#476353] leading-relaxed">
                         {urbanIntelligence.pottingSubstrateFormula}
                       </p>
@@ -1081,7 +1098,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   {/* Companion Planting & Vertical Optimization */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                     <div className="p-4 rounded-2xl bg-[#FAF8F3] border border-[#8FAF91]/30 space-y-2">
-                      <strong className="text-[#17382B] block text-sm">Companion Planting Combinations</strong>
+                      <strong className="text-[#17382B] block text-sm">{uiCopy(lang, 'Companion Planting Combinations')}</strong>
                       <ul className="space-y-1 text-[#395045] list-disc pl-4">
                         {urbanIntelligence.companionPlantingAdvice?.map((c: string, i: number) => (
                           <li key={i}>{c}</li>
@@ -1090,7 +1107,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     </div>
 
                     <div className="p-4 rounded-2xl bg-[#FAF8F3] border border-[#8FAF91]/30 space-y-2">
-                      <strong className="text-[#17382B] block text-sm">Vertical Space Optimization Tips</strong>
+                      <strong className="text-[#17382B] block text-sm">{uiCopy(lang, 'Vertical Space Optimization Tips')}</strong>
                       <ul className="space-y-1 text-[#395045] list-disc pl-4">
                         {urbanIntelligence.verticalOptimizationTips?.map((v: string, i: number) => (
                           <li key={i}>{v}</li>
@@ -1114,13 +1131,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <div>
                   <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-widest text-[#9A7653] mb-1">
                     <Sparkles className="w-4 h-4 text-[#E5A93D]" />
-                    <span>Personalized Agronomic AI Engine · Phase 3.4</span>
+                    <span>{uiCopy(lang, 'Personalized Agronomic AI Engine · Phase 3.4')}</span>
                   </div>
                   <h2 className="text-2xl font-black text-[#17382B] font-display">
-                    Personalized Recommendations for {activeCropName}
+                    {uiCopy(lang, 'Personalized Recommendations for')} {activeCropName}
                   </h2>
                   <p className="text-xs text-[#546b5e] mt-1">
-                    Real-time agricultural guidance calibrated to {currentDistrictId.toUpperCase()} temperature, humidity, and precipitation.
+                    {t.extra.dashboardFieldSummary.replace('{place}', activeCropName).replace('{district}', activeDistrictName)}
                   </p>
                 </div>
 
@@ -1130,21 +1147,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   className="inline-flex items-center gap-2 bg-[#245C43] hover:bg-[#1a4431] text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs transition-colors cursor-pointer"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isLoadingRecs ? 'animate-spin' : ''}`} />
-                  <span>{isLoadingRecs ? 'Analyzing with Gemini...' : 'Refresh AI Recommendations'}</span>
+                  <span>{uiCopy(lang, isLoadingRecs ? 'Analyzing with Gemini...' : 'Refresh AI Recommendations')}</span>
                 </button>
               </div>
 
               {isLoadingRecs ? (
                 <div className="py-16 text-center text-xs text-[#546b5e]">
                   <RefreshCw className="w-8 h-8 animate-spin mx-auto text-[#245C43] mb-3" />
-                  <p className="font-bold text-[#17382B]">Generating Personalized Directives...</p>
+                  <p className="font-bold text-[#17382B]">{uiCopy(lang, 'Generating Personalized Directives...')}</p>
                 </div>
               ) : personalizedRecs ? (
                 <div className="space-y-5 pt-5">
                   {/* Primary Directive Banner */}
                   <div className="p-5 rounded-2xl bg-[#E8F1E7] border border-[#8FAF91]/40 space-y-1">
                     <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#245C43] block">
-                      TODAY'S PRIMARY DIRECTIVE
+                      {uiCopy(lang, 'TODAY’S PRIMARY DIRECTIVE')}
                     </span>
                     <h3 className="text-xl font-black text-[#17382B]">
                       “{personalizedRecs.primaryRecommendation}”
@@ -1154,14 +1171,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   {/* Irrigation & Fertilizer */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                     <div className="p-4 rounded-2xl bg-[#FAF8F3] border border-[#8FAF91]/30 space-y-1">
-                      <strong className="text-[#17382B] block text-sm">💧 Precision Irrigation Guidance</strong>
+                      <strong className="text-[#17382B] block text-sm">💧 {uiCopy(lang, 'Precision Irrigation Guidance')}</strong>
                       <p className="text-[#476353] leading-relaxed">
                         {personalizedRecs.irrigationGuidance}
                       </p>
                     </div>
 
                     <div className="p-4 rounded-2xl bg-[#FAF8F3] border border-[#8FAF91]/30 space-y-1">
-                      <strong className="text-[#17382B] block text-sm">🧪 Fertilizer & Nutrient Feeding Window</strong>
+                      <strong className="text-[#17382B] block text-sm">🧪 {uiCopy(lang, 'Fertilizer & Nutrient Feeding Window')}</strong>
                       <p className="text-[#476353] leading-relaxed">
                         {personalizedRecs.fertilizerTiming}
                       </p>
@@ -1171,11 +1188,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   {/* Pest Risk Level & Watchlist */}
                   <div className="p-4 rounded-2xl bg-[#FAF8F3] border border-[#8FAF91]/30 text-xs space-y-2">
                     <div className="flex items-center justify-between">
-                      <strong className="text-[#17382B] block text-sm">🐛 Ambient Pest & Pathogen Watchlist</strong>
+                      <strong className="text-[#17382B] block text-sm">🐛 {uiCopy(lang, 'Ambient Pest & Pathogen Watchlist')}</strong>
                       <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase ${
                         personalizedRecs.pestRiskLevel === 'high' ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'
                       }`}>
-                        Risk Level: {personalizedRecs.pestRiskLevel}
+                        {uiCopy(lang, 'Risk Level:')} {personalizedRecs.pestRiskLevel}
                       </span>
                     </div>
                     <ul className="space-y-1 text-[#476353] list-disc pl-4">
@@ -1187,7 +1204,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
                   {/* 48-Hour Checklist */}
                   <div className="p-4 rounded-2xl bg-[#FAF8F3] border border-[#8FAF91]/30 text-xs space-y-2">
-                    <strong className="text-[#17382B] block text-sm">✅ 48-Hour Action Checklist</strong>
+                    <strong className="text-[#17382B] block text-sm">✅ {uiCopy(lang, '48-Hour Action Checklist')}</strong>
                     <ul className="space-y-1.5 text-[#395045]">
                       {personalizedRecs.actionChecklist?.map((item: string, i: number) => (
                         <li key={i} className="flex items-center gap-2">
@@ -1213,18 +1230,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <div>
                   <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-widest text-[#245C43] mb-1">
                     <CloudSun className="w-4 h-4 text-[#245C43]" />
-                    <span>Atmospheric & Microclimate Intelligence · Phase 3.5</span>
+                    <span>{uiCopy(lang, 'Atmospheric & Microclimate Intelligence · Phase 3.5')}</span>
                   </div>
                   <h2 className="text-2xl font-black text-[#17382B] font-display">
-                    {currentDistrictId.toUpperCase()} Weather Station
+                    {activeDistrictName} · {t.extra.districtStationSuffix}
                   </h2>
                   <p className="text-xs text-[#546b5e] mt-1">
-                    Synchronized sensors measuring evapotranspiration, humidity saturation, and soil drainage.
+                    {uiCopy(lang, 'Synchronized sensors measuring evapotranspiration, humidity saturation, and soil drainage.')}
                   </p>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-[#546b5e]">Change Station:</span>
+                  <span className="text-xs font-bold text-[#546b5e]">{uiCopy(lang, 'Change Station:')}</span>
                   <select
                     value={currentDistrictId}
                     onChange={(e) => setCurrentDistrictId(e.target.value)}
@@ -1242,31 +1259,31 @@ export const Dashboard: React.FC<DashboardProps> = ({
               {/* Weather Metrics Bar */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-5">
                 <div className="p-4 rounded-2xl bg-[#FAF8F3] border border-[#8FAF91]/30">
-                  <span className="text-[11px] font-bold text-[#546b5e] uppercase block">Ambient Temperature</span>
+                  <span className="text-[11px] font-bold text-[#546b5e] uppercase block">{uiCopy(lang, 'Ambient Temperature')}</span>
                   <span className="text-2xl font-black text-[#17382B] font-mono mt-0.5 block">{weather.temperature}</span>
                   <span className="text-xs text-[#476353]">{weather.condition[lang]}</span>
                 </div>
                 <div className="p-4 rounded-2xl bg-[#FAF8F3] border border-[#8FAF91]/30">
-                  <span className="text-[11px] font-bold text-[#546b5e] uppercase block">Atmospheric Humidity</span>
+                  <span className="text-[11px] font-bold text-[#546b5e] uppercase block">{uiCopy(lang, 'Atmospheric Humidity')}</span>
                   <span className="text-2xl font-black text-[#17382B] font-mono mt-0.5 block">{weather.humidity}%</span>
-                  <span className="text-xs text-[#476353]">Wind: {weather.windSpeed}</span>
+                  <span className="text-xs text-[#476353]">{uiCopy(lang, 'Wind:')} {weather.windSpeed}</span>
                 </div>
                 <div className="p-4 rounded-2xl bg-[#FAF8F3] border border-[#8FAF91]/30">
-                  <span className="text-[11px] font-bold text-[#546b5e] uppercase block">Rain Probability</span>
+                  <span className="text-[11px] font-bold text-[#546b5e] uppercase block">{uiCopy(lang, 'Rain Probability')}</span>
                   <span className="text-2xl font-black text-[#245C43] font-mono mt-0.5 block">{weather.rainProbability}%</span>
-                  <span className="text-xs text-[#476353]">{weather.rainProbability >= 60 ? 'Rain expected' : 'Dry conditions'}</span>
+                  <span className="text-xs text-[#476353]">{uiCopy(lang, weather.rainProbability >= 60 ? 'Rain expected' : 'Dry conditions')}</span>
                 </div>
                 <div className="p-4 rounded-2xl bg-[#FAF8F3] border border-[#8FAF91]/30">
-                  <span className="text-[11px] font-bold text-[#546b5e] uppercase block">Soil Moisture Estimate</span>
+                  <span className="text-[11px] font-bold text-[#546b5e] uppercase block">{uiCopy(lang, 'Soil Moisture Estimate')}</span>
                   <span className="text-2xl font-black text-[#9A7653] font-mono mt-0.5 block">{weather.soilMoistureEst}</span>
-                  <span className="text-xs text-[#476353]">Root Zone Sensor</span>
+                  <span className="text-xs text-[#476353]">{uiCopy(lang, 'Estimated data · not a live sensor reading')}</span>
                 </div>
               </div>
 
               {/* Smart Irrigation Recommendation */}
               <div className="p-5 rounded-2xl bg-[#E8F1E7] border border-[#8FAF91]/40 mt-5 space-y-1">
                 <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#245C43] block">
-                  SMART IRRIGATION ENGINE
+                  {uiCopy(lang, 'SMART IRRIGATION ENGINE')}
                 </span>
                 <h3 className="text-xl font-black text-[#17382B]">
                   “{weather.smartCareRecommendation.directive[lang]}”
@@ -1279,15 +1296,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
               {/* 4-Day Forecast Outlook */}
               <div className="pt-5">
                 <h4 className="text-xs font-bold text-[#17382B] uppercase tracking-wider mb-3">
-                  4-Day Gujarat Meteorological Forecast
+                  {uiCopy(lang, '4-Day Gujarat Meteorological Forecast')}
                 </h4>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {weather.forecast.map((f, i) => (
                     <div key={i} className="p-3.5 rounded-2xl bg-[#FAF8F3] border border-[#8FAF91]/30 text-center">
-                      <span className="text-[11px] font-bold text-[#546b5e] block">{f.day}</span>
+                      <span className="text-[11px] font-bold text-[#546b5e] block">{uiCopy(lang, f.day as Parameters<typeof uiCopy>[1])}</span>
                       <span className="text-lg font-black text-[#245C43] font-mono my-1 block">{f.temp}</span>
-                      <span className="text-xs font-semibold text-[#17382B] block">{f.condition}</span>
-                      <span className="text-[10px] text-[#9A7653] font-bold mt-1 block">{f.rainProbability}% Rain</span>
+                      <span className="text-xs font-semibold text-[#17382B] block">{uiCopy(lang, f.condition as Parameters<typeof uiCopy>[1])}</span>
+                      <span className="text-[10px] text-[#9A7653] font-bold mt-1 block">{f.rainProbability}% {uiCopy(lang, 'Rain')}</span>
                     </div>
                   ))}
                 </div>
@@ -1306,43 +1323,44 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <div>
                   <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-widest text-[#9A7653] mb-1">
                     <Layers className="w-4 h-4 text-[#9A7653]" />
-                    <span>Soil & Substrate Diagnostics</span>
+                    <span>{uiCopy(lang, 'Soil & Substrate Diagnostics')}</span>
                   </div>
                   <h2 className="text-2xl font-black text-[#17382B] font-display">
-                    Substrate Chemistry: {currentDistrictId.toUpperCase()}
+                    {uiCopy(lang, 'Substrate Chemistry:')} {currentDistrictId.toUpperCase()}
                   </h2>
                   <p className="text-xs text-[#546b5e] mt-1">
-                    Nutrient availability in Black Cotton / Loam soil and urban potting mixes.
+                    {uiCopy(lang, 'Nutrient availability in Black Cotton / Loam soil and urban potting mixes.')}
                   </p>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 pt-5">
                 <div className="p-4 rounded-2xl bg-[#FAF8F3] border border-[#E5A93D]/30">
-                  <span className="text-[11px] font-bold text-[#546b5e] uppercase block">Nitrogen (N)</span>
+                  <span className="text-[11px] font-bold text-[#546b5e] uppercase block">{uiCopy(lang, 'Nitrogen (N)')}</span>
                   <span className="text-xl font-black text-[#E5A93D] font-mono mt-1 block">34 ppm</span>
-                  <span className="text-[11px] text-[#7A5416]">Slight Deficit ⚠</span>
+                  <span className="text-[11px] text-[#7A5416]">{uiCopy(lang, 'Slight Deficit ⚠')}</span>
                 </div>
                 <div className="p-4 rounded-2xl bg-[#FAF8F3] border border-[#8FAF91]/30">
-                  <span className="text-[11px] font-bold text-[#546b5e] uppercase block">Phosphorus (P)</span>
+                  <span className="text-[11px] font-bold text-[#546b5e] uppercase block">{uiCopy(lang, 'Phosphorus (P)')}</span>
                   <span className="text-xl font-black text-[#245C43] font-mono mt-1 block">68 ppm</span>
-                  <span className="text-[11px] text-[#245C43]">Optimal</span>
+                  <span className="text-[11px] text-[#245C43]">{uiCopy(lang, 'Optimal')}</span>
                 </div>
                 <div className="p-4 rounded-2xl bg-[#FAF8F3] border border-[#8FAF91]/30">
-                  <span className="text-[11px] font-bold text-[#546b5e] uppercase block">Potassium (K)</span>
+                  <span className="text-[11px] font-bold text-[#546b5e] uppercase block">{uiCopy(lang, 'Potassium (K)')}</span>
                   <span className="text-xl font-black text-[#245C43] font-mono mt-1 block">142 ppm</span>
-                  <span className="text-[11px] text-[#245C43]">High / Healthy</span>
+                  <span className="text-[11px] text-[#245C43]">{uiCopy(lang, 'High / Healthy')}</span>
                 </div>
                 <div className="p-4 rounded-2xl bg-[#FAF8F3] border border-[#8FAF91]/30">
-                  <span className="text-[11px] font-bold text-[#546b5e] uppercase block">Substrate pH</span>
+                  <span className="text-[11px] font-bold text-[#546b5e] uppercase block">{uiCopy(lang, 'Substrate pH')}</span>
                   <span className="text-xl font-black text-[#17382B] font-mono mt-1 block">6.8</span>
-                  <span className="text-[11px] text-[#245C43]">Neutral</span>
+                  <span className="text-[11px] text-[#245C43]">{uiCopy(lang, 'Neutral')}</span>
                 </div>
               </div>
 
               <div className="mt-5 p-4 rounded-2xl bg-[#FAF8F3] border border-[#8FAF91]/30 text-xs text-[#395045] leading-relaxed">
-                <strong className="text-[#17382B] block mb-1">Agronomic Soil Recommendation:</strong>
-                Top-dress 250g of organic neem cake or well-decomposed vermicompost per square meter. Avoid synthetic nitrogen spikes during cloudy monsoon conditions to reduce soft rot susceptibility.
+                <strong className="text-[#17382B] block mb-1">{uiCopy(lang, 'Agronomic Soil Recommendation:')}</strong>
+                {uiCopy(lang, 'Top-dress 250g of organic neem cake or well-decomposed vermicompost per square meter. Avoid synthetic nitrogen spikes during cloudy monsoon conditions to reduce soft rot susceptibility.')}
+                <p className="mt-2">{uiCopy(lang, 'No soil sensor is connected; measurements shown are illustrative estimates.')}</p>
               </div>
             </div>
           </div>
@@ -1358,10 +1376,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <div>
                   <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-widest text-[#9A7653] mb-1">
                     <History className="w-4 h-4 text-[#245C43]" />
-                    <span>Persistent User History · MySQL Database</span>
+                    <span>{uiCopy(lang, 'Persistent User History · MySQL Database')}</span>
                   </div>
                   <h2 className="text-2xl font-black text-[#17382B] font-display">
-                    Diagnostic Activity Ledger
+                    {uiCopy(lang, 'Diagnostic Activity Ledger')}
                   </h2>
                   <p className="text-xs text-[#546b5e] mt-1">
                     {currentUser
@@ -1373,7 +1391,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-[#E8F1E7] text-[#245C43] border border-[#8FAF91]/40">
                     <Database className="w-3.5 h-3.5 text-[#245C43]" />
-                    <span>{dbStatus?.connected ? 'MySQL Connected (XAMPP)' : 'MySQL (Active)'}</span>
+                    <span>{dbStatus?.connected ? uiCopy(lang, 'MySQL Connected (XAMPP)') : uiCopy(lang, 'MySQL (Active)')}</span>
                   </div>
                   <button
                     onClick={fetchHistory}
@@ -1381,7 +1399,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     className="inline-flex items-center gap-1.5 text-xs font-bold text-[#245C43] bg-white border border-[#8FAF91]/40 px-3.5 py-1.5 rounded-xl hover:bg-[#FAF8F3] transition-colors cursor-pointer"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${isLoadingHistory ? 'animate-spin' : ''}`} />
-                    <span>Refresh</span>
+                    <span>{uiCopy(lang, 'Refresh')}</span>
                   </button>
                 </div>
               </div>
@@ -1391,13 +1409,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <div className="mt-5 p-4 rounded-2xl bg-[#FFF9EB] border border-[#E5A93D]/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
                   <div className="flex items-center gap-2 text-[#7A5416]">
                     <AlertCircle className="w-4 h-4 shrink-0 text-[#E5A93D]" />
-                    <span>You are browsing as a guest. Plant scans and chats will not be saved permanently to MySQL without an account.</span>
+                    <span>{uiCopy(lang, 'You are browsing as a guest. Plant scans and chats will not be saved permanently to MySQL without an account.')}</span>
                   </div>
                   <button
                     onClick={onShowAuth}
                     className="px-3.5 py-1.5 bg-[#245C43] text-white font-bold rounded-xl whitespace-nowrap hover:bg-[#1a4431] transition-colors cursor-pointer"
                   >
-                    Create Account / Sign In
+                    {uiCopy(lang, 'Create Account / Sign In')}
                   </button>
                 </div>
               )}
@@ -1412,7 +1430,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       : 'bg-[#FAF8F3] text-[#476353] hover:bg-[#E8F1E7]'
                   }`}
                 >
-                  All Activities ({activities.length})
+                  {uiCopy(lang, 'All Activities')} ({activities.length})
                 </button>
                 <button
                   onClick={() => setHistoryFilter('plant_scan')}
@@ -1448,7 +1466,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       : 'bg-[#FAF8F3] text-[#476353] hover:bg-[#E8F1E7]'
                   }`}
                 >
-                  <span>🔔 Care Tasks</span>
+                  <span>🔔 {localizedText(lang, 'Care Tasks')}</span>
                   <span className="font-mono text-[10px] opacity-80">
                     ({activities.filter((a) => a.activity_type === 'care_reminder').length})
                   </span>
@@ -1461,7 +1479,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       : 'bg-[#FAF8F3] text-[#476353] hover:bg-[#E8F1E7]'
                   }`}
                 >
-                  <span>🛡️ Account Events</span>
+                  <span>🛡️ {localizedText(lang, 'Account Events')}</span>
                   <span className="font-mono text-[10px] opacity-80">
                     ({activities.filter((a) => a.activity_type === 'account_created').length})
                   </span>
@@ -1473,7 +1491,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 {isLoadingHistory ? (
                   <div className="bg-white rounded-3xl border border-[#8FAF91]/30 p-12 text-center text-xs text-[#546b5e]">
                     <RefreshCw className="w-6 h-6 animate-spin mx-auto text-[#245C43] mb-3" />
-                    <span>Loading persistent records from MySQL...</span>
+                    <span>{localizedText(lang, 'Loading persistent records from MySQL...')}</span>
                   </div>
                 ) : activities.filter((a) => historyFilter === 'all' || a.activity_type === historyFilter).length === 0 ? (
                   <div className="bg-white rounded-3xl border border-[#8FAF91]/30 p-12 text-center space-y-4">
@@ -1481,11 +1499,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       <History className="w-6 h-6" />
                     </div>
                     <div>
-                      <h4 className="text-base font-bold text-[#17382B]">No Activity Records Found</h4>
+                      <h4 className="text-base font-bold text-[#17382B]">{localizedText(lang, 'No Activity Records Found')}</h4>
                       <p className="text-xs text-[#546b5e] max-w-md mx-auto mt-1">
                         {currentUser
-                          ? `No activity history recorded yet for ${currentUser.name}. Perform your first plant health scan or consult the AI Plant Doctor to build your persistent medical ledger in MySQL.`
-                          : 'Sign in to record and access your permanent plant pathology history in MySQL.'}
+                          ? lang === 'gu'
+                            ? `હજુ સુધી ${currentUser.name} માટે કોઈ પ્રવૃત્તિનો ઇતિહાસ નથી. કાયમી નોંધ બનાવવા માટે પ્રથમ છોડ સ્કેન કરો અથવા પ્લાન્ટ ડૉક્ટરની સલાહ લો.`
+                            : lang === 'hi'
+                              ? `${currentUser.name} के लिए अभी तक कोई गतिविधि इतिहास नहीं है। स्थायी रिकॉर्ड बनाने के लिए पहला पौधा स्कैन करें या प्लांट डॉक्टर से सलाह लें।`
+                              : `No activity history recorded yet for ${currentUser.name}. Perform your first plant health scan or consult the AI Plant Doctor to build your persistent medical ledger.`
+                          : lang === 'gu'
+                            ? 'તમારો કાયમી છોડ-સ્વાસ્થ્ય ઇતિહાસ જોવા અને નોંધવા માટે સાઇન ઇન કરો.'
+                            : lang === 'hi'
+                              ? 'अपने स्थायी पौधा-स्वास्थ्य इतिहास को दर्ज करने और देखने के लिए साइन इन करें।'
+                              : 'Sign in to record and access your permanent plant health history.'}
                       </p>
                     </div>
                     <div className="flex items-center justify-center gap-3 pt-2">
@@ -1494,14 +1520,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         className="inline-flex items-center gap-2 bg-[#245C43] text-white text-xs font-bold px-4 py-2.5 rounded-xl hover:bg-[#1a4431] transition-colors cursor-pointer"
                       >
                         <ScanLine className="w-4 h-4" />
-                        <span>Scan Your Plant</span>
+                        <span>{localizedText(lang, 'Scan Your Plant')}</span>
                       </button>
                       <button
                         onClick={() => onOpenDoctor()}
                         className="inline-flex items-center gap-2 bg-white border border-[#8FAF91]/40 text-[#245C43] text-xs font-bold px-4 py-2.5 rounded-xl hover:bg-[#FAF8F3] transition-colors cursor-pointer"
                       >
                         <Sparkles className="w-4 h-4 text-[#9A7653]" />
-                        <span>Consult Plant Doctor</span>
+                        <span>{localizedText(lang, 'Consult Plant Doctor')}</span>
                       </button>
                     </div>
                   </div>
@@ -1514,7 +1540,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       const isCare = act.activity_type === 'care_reminder';
                       const isAccount = act.activity_type === 'account_created';
                       const content = typeof act.content === 'object' && act.content !== null ? act.content : {};
-                      const dateStr = act.created_at ? new Date(act.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : 'Recently';
+                      const dateLocale = lang === 'gu' ? 'gu-IN' : lang === 'hi' ? 'hi-IN' : 'en-IN';
+                      const dateStr = act.created_at
+                        ? new Date(act.created_at).toLocaleString(dateLocale, { dateStyle: 'medium', timeStyle: 'short' })
+                        : localizedText(lang, 'Recently');
 
                       return (
                         <div
@@ -1533,14 +1562,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                   <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
                                     isScan ? 'bg-[#E8F1E7] text-[#245C43]' : isChat ? 'bg-[#FAF8F3] text-[#9A7653] border border-[#8FAF91]/30' : isCare ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'
                                   }`}>
-                                    {isScan ? 'Plant Scan' : isChat ? 'Doctor Consultation' : isCare ? 'Care Reminder' : 'Account Security'}
+                                    {localizedText(lang, isScan ? 'Plant Scan' : isChat ? 'Doctor Consultation' : isCare ? 'Care Reminder' : 'Account Security')}
                                   </span>
                                   <span className="text-[11px] text-[#546b5e] font-mono flex items-center gap-1">
                                     <Clock className="w-3 h-3 text-[#8FAF91]" />
                                     <span>{dateStr}</span>
                                   </span>
                                 </div>
-                                <h4 className="text-sm font-bold text-[#17382B] mt-1">{act.title}</h4>
+                                <h4 className="text-sm font-bold text-[#17382B] mt-1">{localizedText(lang, act.title)}</h4>
                               </div>
                             </div>
 
@@ -1554,13 +1583,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                   className="inline-flex items-center gap-1 text-[11px] font-bold text-[#245C43] bg-[#E8F1E7] hover:bg-[#8FAF91]/30 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
                                 >
                                   <FileText className="w-3 h-3" />
-                                  <span>View Report</span>
+                                  <span>{localizedText(lang, 'View Report')}</span>
                                 </button>
                                 <button
                                   onClick={() => onOpenDoctor(undefined, content)}
                                   className="inline-flex items-center gap-1 text-[11px] font-bold text-[#9A7653] hover:underline cursor-pointer"
                                 >
-                                  <span>Consult Doctor</span>
+                                  <span>{localizedText(lang, 'Consult Doctor')}</span>
                                   <ChevronRight className="w-3.5 h-3.5" />
                                 </button>
                               </div>
@@ -1570,7 +1599,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                 onClick={() => onOpenDoctor(content.query)}
                                 className="inline-flex items-center gap-1 text-[11px] font-bold text-[#245C43] hover:underline shrink-0 cursor-pointer"
                               >
-                                <span>Re-ask</span>
+                                <span>{localizedText(lang, 'Re-ask')}</span>
                                 <ChevronRight className="w-3.5 h-3.5" />
                               </button>
                             )}
@@ -1582,14 +1611,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                               <div className="flex flex-wrap items-center gap-2">
                                 {content.confidence !== undefined && (
                                   <span className="font-mono font-bold text-[#245C43] bg-white px-2 py-0.5 rounded-md border border-[#8FAF91]/30">
-                                    {content.confidence}% Confidence
+                                    {content.confidence}% {localizedText(lang, 'Confidence')}
                                   </span>
                                 )}
                                 {content.severity && (
                                   <span className={`font-semibold capitalize px-2 py-0.5 rounded-md ${
                                     content.severity === 'high' ? 'bg-red-50 text-red-700' : content.severity === 'moderate' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'
                                   }`}>
-                                    Severity: {content.severity}
+                                    {localizedText(lang, 'Severity')}: {localizedText(lang, content.severity)}
                                   </span>
                                 )}
                                 {content.condition && (
@@ -1600,7 +1629,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                               </div>
                               {content.treatmentSummary && (
                                 <p className="text-[11px] text-[#546b5e] leading-relaxed pt-1 border-t border-[#8FAF91]/20">
-                                  <strong>Treatment protocol:</strong> {content.treatmentSummary}
+                                  <strong>{localizedText(lang, 'Treatment protocol:')}</strong> {localizedText(lang, content.treatmentSummary)}
                                 </p>
                               )}
                             </div>
@@ -1660,7 +1689,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   {t.todayGlance}
                 </span>
                 <span className="text-xs font-mono text-[#546b5e]">
-                  Station: {currentDistrictId.toUpperCase()} · Synced 5m ago
+                  {uiCopy(lang, 'Station:')} {currentDistrictId.toUpperCase()} · {uiCopy(lang, 'Synced 5m ago')}
                 </span>
               </div>
 
@@ -1684,7 +1713,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <span className="text-xl font-black text-[#17382B] font-mono block">
                       {weather.humidity}%
                     </span>
-                    <span className="text-[11px] text-[#476353]">Wind: {weather.windSpeed}</span>
+                    <span className="text-[11px] text-[#476353]">{uiCopy(lang, 'Wind:')} {weather.windSpeed}</span>
                   </div>
 
                   <div className="space-y-1 border-l border-[#8FAF91]/25 pl-3">
@@ -1695,7 +1724,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       {weather.rainProbability}%
                     </span>
                     <span className={`text-[11px] font-bold ${weather.rainProbability >= 60 ? 'text-[#E5A93D]' : 'text-[#245C43]'}`}>
-                      {weather.rainProbability >= 60 ? 'Rain expected' : 'Dry conditions'}
+                      {uiCopy(lang, weather.rainProbability >= 60 ? 'Rain expected' : 'Dry conditions')}
                     </span>
                   </div>
                 </div>
@@ -1795,10 +1824,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         {t.healthPulseLabel}
                       </div>
                       <h4 className="text-base font-extrabold text-[#17382B]">
-                        Optimal Cellular Turgor & Foliage Respiration
+                        {localizedText(lang, 'Optimal Cellular Turgor & Foliage Respiration')}
                       </h4>
                       <p className="text-xs text-[#476353] leading-relaxed">
-                        Leaf chlorophyll index reads 94.2%. Pathogen probability is quiet. The plant is currently accumulating sugars for healthy yield.
+                        {localizedText(lang, 'Leaf chlorophyll index reads 94.2%. Pathogen probability is quiet. The plant is currently accumulating sugars for healthy yield.')}
                       </p>
                     </div>
                   </div>
@@ -1841,7 +1870,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   {/* Bottom Card Actions */}
                   <div className="pt-4 border-t border-[#8FAF91]/25 flex items-center justify-between">
                     <span className="text-xs text-[#546b5e]">
-                      Specimen ID: PL-{activeCropName.substring(0, 2).toUpperCase()}-940 · {currentDistrictId.toUpperCase()}
+                      {localizedText(lang, 'Specimen ID')}: PL-{activeCropId.substring(0, 2).toUpperCase()}-940 · {currentDistrictId.toUpperCase()}
                     </span>
                     <button
                       onClick={() => onOpenScanStudio(activeCropName)}
@@ -1859,14 +1888,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <div className="flex items-center gap-2">
                       <Bell className="w-4 h-4 text-[#245C43]" />
                       <span className="text-xs font-extrabold uppercase tracking-widest text-[#9A7653]">
-                        Today's Care Reminders & Tasks
+                        {localizedText(lang, "Today's Care Reminders & Tasks")}
                       </span>
                     </div>
                     <button
                       onClick={() => setActiveSidebarNav('Plant Care & Reminders')}
                       className="text-xs font-bold text-[#245C43] hover:underline cursor-pointer"
                     >
-                      View All ({tasks.length}) →
+                      {localizedText(lang, 'View All →').replace(' →', '')} ({tasks.length}) →
                     </button>
                   </div>
 
@@ -1887,10 +1916,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           >
                             {task.completed && <Check className="w-3.5 h-3.5" />}
                           </button>
-                          <span className="text-xs font-bold">{task.title}</span>
+                          <span className="text-xs font-bold">{localizedText(lang, task.title)}</span>
                         </div>
                         <span className="text-[10px] font-semibold text-[#546b5e] uppercase">
-                          {task.due_date}
+                          {localizedText(lang, task.due_date)}
                         </span>
                       </div>
                     ))}
@@ -1901,7 +1930,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <div className="bg-gradient-to-r from-[#1C402E] to-[#245C43] rounded-3xl p-6 sm:p-7 text-white shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5">
                   <div className="space-y-1 max-w-md">
                     <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#E5A93D] block">
-                      OPTICAL DIAGNOSTIC SCAN
+                      {localizedText(lang, 'OPTICAL DIAGNOSTIC SCAN')}
                     </span>
                     <h3 className="text-xl font-bold font-display">
                       {t.scanTitle}
@@ -1944,7 +1973,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       “{t.plantDoctorSubtitle}”
                     </p>
                     <span className="text-[11px] text-[#546b5e] mt-1 block">
-                      Adaptive decision tree diagnostics in Gujarati, Hindi or English.
+                      {lang === 'gu'
+                        ? 'ગુજરાતી, હિન્દી અથવા અંગ્રેજીમાં અનુકૂલનશીલ નિદાન સંવાદ.'
+                        : lang === 'hi'
+                          ? 'गुजराती, हिंदी या अंग्रेज़ी में अनुकूलित निदान संवाद।'
+                          : localizedText(lang, 'Adaptive decision tree diagnostics in Gujarati, Hindi or English.')}
                     </span>
                   </div>
 
@@ -1991,7 +2024,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         <Mic className="w-4 h-4 text-[#E5A93D] animate-pulse" />
                         <div>
                           <span className="text-xs font-bold block">{t.actionSpeak}</span>
-                          <span className="text-[10px] text-[#E8F1E7]/80 block">Vernacular Voice AI</span>
+                          <span className="text-[10px] text-[#E8F1E7]/80 block">{localizedText(lang, 'Vernacular Voice AI')}</span>
                         </div>
                       </div>
                       <ChevronRight className="w-3.5 h-3.5 text-[#E8F1E7]" />
@@ -2035,7 +2068,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       onClick={() => setActiveSidebarNav('My Plants')}
                       className="text-xs font-bold text-[#245C43] hover:underline cursor-pointer"
                     >
-                      View All →
+                      {localizedText(lang, 'View All →')}
                     </button>
                   </div>
 
@@ -2051,8 +2084,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             {(plant.name || '').toLowerCase().includes('tomato') ? '🍅' : (plant.name || '').toLowerCase().includes('cotton') ? '🌾' : '🪴'}
                           </div>
                           <div>
-                            <span className="font-bold text-[#17382B] block">{plant.name}</span>
-                            <span className="text-[11px] text-[#546b5e]">{plant.species || plant.location || 'Monitored'}</span>
+                            <span className="font-bold text-[#17382B] block">{localizedText(lang, plant.name)}</span>
+                            <span className="text-[11px] text-[#546b5e]">{localizedText(lang, plant.species || plant.location || 'Monitored')}</span>
                           </div>
                         </div>
                         <div className="text-right">
@@ -2060,7 +2093,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             {plant.health_score || plant.healthScore || 87} / 100
                           </span>
                           <span className="text-[10px] font-bold text-[#245C43]">
-                            {plant.health_status || plant.status || 'Healthy'}
+                            {localizedText(lang, plant.health_status || plant.status || 'Healthy')}
                           </span>
                         </div>
                       </div>
@@ -2094,7 +2127,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   required
                   value={newPlantName}
                   onChange={(e) => setNewPlantName(e.target.value)}
-                  placeholder="e.g. Cherry Tomato / Fenugreek"
+                  placeholder={uiCopy(lang, 'e.g. Cherry Tomato / Fenugreek')}
                   className="w-full px-3 py-2 rounded-xl border border-[#8FAF91]/40 bg-[#FAF8F3]"
                 />
               </div>
@@ -2105,7 +2138,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   type="text"
                   value={newPlantSpecies}
                   onChange={(e) => setNewPlantSpecies(e.target.value)}
-                  placeholder="e.g. Solanum lycopersicum"
+                  placeholder={uiCopy(lang, 'e.g. Solanum lycopersicum')}
                   className="w-full px-3 py-2 rounded-xl border border-[#8FAF91]/40 bg-[#FAF8F3]"
                 />
               </div>
@@ -2156,37 +2189,37 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   required
                   value={newTaskTitle}
                   onChange={(e) => setNewTaskTitle(e.target.value)}
-                  placeholder="e.g. Water Tomato root zone"
+                  placeholder={uiCopy(lang, 'e.g. Water Tomato root zone')}
                   className="w-full px-3 py-2 rounded-xl border border-[#8FAF91]/40 bg-[#FAF8F3]"
                 />
               </div>
 
               <div>
-                <label className="font-bold text-[#17382B] block mb-1">Task Category</label>
+                <label className="font-bold text-[#17382B] block mb-1">{uiCopy(lang, 'Task Category')}</label>
                 <select
                   value={newTaskType}
                   onChange={(e) => setNewTaskType(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-[#8FAF91]/40 bg-[#FAF8F3] font-bold text-[#17382B]"
                 >
-                  <option value="watering">💧 Watering & Irrigation</option>
-                  <option value="fertilizing">🧪 Fertilizer & Nutrient Feeding</option>
-                  <option value="inspection">🔍 Pest & Foliage Inspection</option>
-                  <option value="pruning">✂️ Pruning & Staking</option>
-                  <option value="harvesting">🧺 Harvesting</option>
+                  <option value="watering">💧 {localizedText(lang, 'Watering & Irrigation')}</option>
+                  <option value="fertilizing">🧪 {localizedText(lang, 'Fertilizer & Nutrient Feeding')}</option>
+                  <option value="inspection">🔍 {localizedText(lang, 'Pest & Foliage Inspection')}</option>
+                  <option value="pruning">✂️ {localizedText(lang, 'Pruning & Staking')}</option>
+                  <option value="harvesting">🧺 {localizedText(lang, 'Harvesting')}</option>
                 </select>
               </div>
 
               <div>
-                <label className="font-bold text-[#17382B] block mb-1">Due Date</label>
+                <label className="font-bold text-[#17382B] block mb-1">{uiCopy(lang, 'Due date')}</label>
                 <select
                   value={newTaskDueDate}
                   onChange={(e) => setNewTaskDueDate(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-[#8FAF91]/40 bg-[#FAF8F3] font-bold text-[#17382B]"
                 >
-                  <option value="Today">Today</option>
-                  <option value="Tomorrow">Tomorrow</option>
-                  <option value="In 2 Days">In 2 Days</option>
-                  <option value="This Weekend">This Weekend</option>
+                  <option value="Today">{uiCopy(lang, 'Today')}</option>
+                  <option value="Tomorrow">{uiCopy(lang, 'Tomorrow')}</option>
+                  <option value="In 2 Days">{uiCopy(lang, 'In 2 Days')}</option>
+                  <option value="This Weekend">{uiCopy(lang, 'This Weekend')}</option>
                 </select>
               </div>
 
@@ -2194,7 +2227,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 type="submit"
                 className="w-full py-3 bg-[#245C43] text-white font-bold rounded-xl mt-3 cursor-pointer hover:bg-[#1a4431]"
               >
-                Create Reminder
+                {uiCopy(lang, 'Create reminder')}
               </button>
             </form>
           </div>
@@ -2210,13 +2243,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <div>
                 <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-widest text-[#9A7653] mb-1">
                   <FileText className="w-4 h-4 text-[#245C43]" />
-                  <span>Optical AI Diagnostic Report</span>
+                  <span>{localizedText(lang, 'Optical AI Diagnostic Report')}</span>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#E8F1E7] text-[#245C43]">
-                    Archived Scan
+                    {localizedText(lang, 'Archived Scan')}
                   </span>
                 </div>
                 <h3 className="text-2xl font-black text-[#17382B] font-display">
-                  {selectedReportScan.plantName || 'Plant Specimen'}
+                  {localizedText(lang, selectedReportScan.plantName || 'Plant Specimen')}
                   {selectedReportScan.scientificName && selectedReportScan.scientificName !== 'Unknown' && (
                     <span className="text-sm font-normal italic text-[#546b5e] ml-2">
                       ({selectedReportScan.scientificName})
@@ -2236,7 +2269,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="p-4 rounded-2xl bg-[#FAF8F3] border border-[#8FAF91]/35 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-[#9A7653] block">
-                  Diagnosed Condition
+                  {localizedText(lang, 'Diagnosed Condition')}
                 </span>
                 <span className="text-xl font-black text-[#17382B]">
                   {selectedReportScan.condition || 'Health Check'}
@@ -2264,7 +2297,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       ? 'bg-amber-50 text-amber-700 border border-amber-200'
                       : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                   }`}>
-                    {selectedReportScan.severity} Severity
+                    {localizedText(lang, selectedReportScan.severity)} · {localizedText(lang, 'Severity')}
                   </span>
                 )}
               </div>
@@ -2296,7 +2329,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     scanModalTab === 'treatment' ? 'bg-[#245C43] text-white' : 'text-[#476353] hover:text-[#17382B]'
                   }`}
                 >
-                  Treatment
+                  {localizedText(lang, 'Treatment')}
                 </button>
                 <button
                   onClick={() => setScanModalTab('prevention')}
@@ -2408,14 +2441,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-[#245C43] hover:bg-[#1a4431] text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow-xs transition-colors cursor-pointer"
               >
                 <Sparkles className="w-3.5 h-3.5 text-[#E5A93D]" />
-                <span>Consult Plant Doctor with this Scan</span>
+                <span>{uiCopy(lang, 'Consult Plant Doctor with this Scan')}</span>
               </button>
 
               <button
                 onClick={() => setSelectedReportScan(null)}
                 className="w-full sm:w-auto px-5 py-2.5 bg-white border border-[#8FAF91]/40 text-[#17382B] text-xs font-bold rounded-xl hover:bg-[#FAF8F3] transition-colors cursor-pointer"
               >
-                Return to Dashboard
+                {localizedText(lang, 'Return to Dashboard')}
               </button>
             </div>
           </div>
@@ -2453,7 +2486,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
               <div className="p-3 rounded-xl bg-[#FAF8F3] border border-[#8FAF91]/30">
                 <strong className="text-[#17382B] block mb-0.5">3. Consult Plant Doctor</strong>
-                Ask questions in Gujarati, Hindi or English using voice or text.
+                {localizedText(lang, 'Ask questions in Gujarati, Hindi or English using voice or text.')}
               </div>
             </div>
 
