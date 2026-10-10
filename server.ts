@@ -193,6 +193,363 @@ const PLANT_ANALYSIS_SCHEMA = {
   ],
 };
 
+const MAX_PLANT_IMAGE_BYTES = 16 * 1024 * 1024;
+const SUPPORTED_PLANT_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const DIAGNOSIS_CONDITION_TYPES = new Set([
+  'disease',
+  'pest',
+  'nutrient_deficiency',
+  'environmental_stress',
+  'healthy',
+  'uncertain',
+]);
+const DIAGNOSIS_SEVERITIES = new Set(['low', 'moderate', 'high', 'unknown']);
+const DIAGNOSIS_STRING_FIELDS = [
+  'plantName',
+  'scientificName',
+  'condition',
+  'wateringAdvice',
+  'followUpQuestion',
+  'analysisNote',
+  'plantType',
+  'overallHealth',
+  'sunlightRequirement',
+  'soilRecommendation',
+  'fertilizerRecommendation',
+] as const;
+const DIAGNOSIS_STRING_ARRAY_FIELDS = [
+  'symptoms',
+  'possibleCauses',
+  'treatment',
+  'whatToAvoid',
+  'prevention',
+  'nextSteps',
+  'monitoringPlan',
+  'immediateActions',
+  'careTips',
+] as const;
+
+class PlantScanRequestError extends Error {
+  constructor(
+    message: string,
+    readonly statusCode: number,
+    readonly code: string,
+  ) {
+    super(message);
+    this.name = 'PlantScanRequestError';
+  }
+}
+
+const PNG_CRC_TABLE = Uint32Array.from({ length: 256 }, (_, index) => {
+  let value = index;
+  for (let bit = 0; bit < 8; bit += 1) {
+    value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+  }
+  return value >>> 0;
+});
+
+function hasValidPngStructure(imageBytes: Buffer): boolean {
+  const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  if (imageBytes.length < 57 || !imageBytes.subarray(0, 8).equals(signature)) return false;
+
+  let offset = 8;
+  let hasHeader = false;
+  let hasImageData = false;
+  while (offset + 12 <= imageBytes.length) {
+    const chunkLength = imageBytes.readUInt32BE(offset);
+    const chunkEnd = offset + chunkLength + 12;
+    if (chunkEnd > imageBytes.length) return false;
+
+    const chunkType = imageBytes.toString('ascii', offset + 4, offset + 8);
+    if (!hasHeader && chunkType !== 'IHDR') return false;
+    if (chunkType === 'IHDR') {
+      if (hasHeader || chunkLength !== 13) return false;
+      const width = imageBytes.readUInt32BE(offset + 8);
+      const height = imageBytes.readUInt32BE(offset + 12);
+      if (!width || !height) return false;
+      hasHeader = true;
+    }
+    if (chunkType === 'IDAT') hasImageData = true;
+
+    let crc = 0xffffffff;
+    for (let index = offset + 4; index < offset + 8 + chunkLength; index += 1) {
+      crc = PNG_CRC_TABLE[(crc ^ imageBytes[index]) & 0xff] ^ (crc >>> 8);
+    }
+    crc = (crc ^ 0xffffffff) >>> 0;
+    if (crc !== imageBytes.readUInt32BE(offset + 8 + chunkLength)) return false;
+
+    if (chunkType === 'IEND') {
+      return chunkLength === 0 && hasHeader && hasImageData && chunkEnd === imageBytes.length;
+    }
+    offset = chunkEnd;
+  }
+  return false;
+}
+
+function hasValidJpegStructure(imageBytes: Buffer): boolean {
+  if (
+    imageBytes.length < 8 ||
+    imageBytes[0] !== 0xff ||
+    imageBytes[1] !== 0xd8 ||
+    imageBytes[imageBytes.length - 2] !== 0xff ||
+    imageBytes[imageBytes.length - 1] !== 0xd9
+  ) {
+    return false;
+  }
+
+  const frameMarkers = new Set([
+    0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf,
+  ]);
+  let offset = 2;
+  let hasFrame = false;
+  while (offset < imageBytes.length - 2) {
+    if (imageBytes[offset] !== 0xff) return false;
+    while (imageBytes[offset] === 0xff) offset += 1;
+    const marker = imageBytes[offset];
+    offset += 1;
+
+    if (marker === 0xd9) return hasFrame;
+    if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) continue;
+    if (offset + 2 > imageBytes.length - 2) return false;
+
+    const segmentLength = imageBytes.readUInt16BE(offset);
+    if (segmentLength < 2 || offset + segmentLength > imageBytes.length - 2) return false;
+    const segmentEnd = offset + segmentLength;
+    if (frameMarkers.has(marker)) {
+      if (segmentLength < 8 || !imageBytes.readUInt16BE(offset + 3) || !imageBytes.readUInt16BE(offset + 5)) {
+        return false;
+      }
+      hasFrame = true;
+    }
+    if (marker === 0xda) {
+      return hasFrame && segmentEnd < imageBytes.length - 2;
+    }
+    offset = segmentEnd;
+  }
+  return false;
+}
+
+function hasValidWebpStructure(imageBytes: Buffer): boolean {
+  if (
+    imageBytes.length < 20 ||
+    imageBytes.toString('ascii', 0, 4) !== 'RIFF' ||
+    imageBytes.toString('ascii', 8, 12) !== 'WEBP' ||
+    imageBytes.readUInt32LE(4) !== imageBytes.length - 8
+  ) {
+    return false;
+  }
+
+  let offset = 12;
+  let hasImageData = false;
+  while (offset + 8 <= imageBytes.length) {
+    const chunkType = imageBytes.toString('ascii', offset, offset + 4);
+    const chunkLength = imageBytes.readUInt32LE(offset + 4);
+    const chunkEnd = offset + 8 + chunkLength + (chunkLength % 2);
+    if (chunkEnd > imageBytes.length) return false;
+    if (chunkType === 'VP8 ' || chunkType === 'VP8L' || chunkType === 'ANMF') {
+      hasImageData = true;
+    }
+    offset = chunkEnd;
+  }
+  return hasImageData && offset === imageBytes.length;
+}
+
+function decodePlantImage(image: unknown): { mimeType: string; data: string } {
+  if (!image || typeof image !== 'object') {
+    throw new PlantScanRequestError('Image data is required.', 400, 'IMAGE_MISSING');
+  }
+
+  const payload = image as { base64?: unknown; mimeType?: unknown };
+  if (typeof payload.base64 !== 'string' || payload.base64.length === 0) {
+    throw new PlantScanRequestError('Image data is required.', 400, 'IMAGE_MISSING');
+  }
+
+  let encodedData = payload.base64;
+  let dataUrlMimeType: string | undefined;
+  if (encodedData.startsWith('data:')) {
+    const dataUrlMatch = encodedData.match(/^data:([^;,]+);base64,([A-Za-z0-9+/]*={0,2})$/i);
+    if (!dataUrlMatch) {
+      throw new PlantScanRequestError('The image data URL is invalid.', 400, 'INVALID_IMAGE_DATA');
+    }
+    dataUrlMimeType = dataUrlMatch[1].toLowerCase();
+    encodedData = dataUrlMatch[2];
+  }
+
+  const declaredMimeType =
+    typeof payload.mimeType === 'string' ? payload.mimeType.toLowerCase().trim() : undefined;
+  if (declaredMimeType && dataUrlMimeType && declaredMimeType !== dataUrlMimeType) {
+    throw new PlantScanRequestError('Image type does not match its data.', 400, 'INVALID_IMAGE_TYPE');
+  }
+
+  const mimeType = dataUrlMimeType || declaredMimeType;
+  if (!mimeType || !SUPPORTED_PLANT_IMAGE_TYPES.has(mimeType)) {
+    throw new PlantScanRequestError('Use a JPEG, PNG, or WebP image.', 415, 'UNSUPPORTED_IMAGE_TYPE');
+  }
+
+  if (
+    encodedData.length === 0 ||
+    encodedData.length % 4 === 1 ||
+    !/^[A-Za-z0-9+/]*={0,2}$/.test(encodedData)
+  ) {
+    throw new PlantScanRequestError('The image data is malformed.', 400, 'INVALID_IMAGE_DATA');
+  }
+
+  const paddingLength = encodedData.endsWith('==') ? 2 : encodedData.endsWith('=') ? 1 : 0;
+  const estimatedBytes = Math.floor((encodedData.length * 3) / 4) - paddingLength;
+  if (estimatedBytes > MAX_PLANT_IMAGE_BYTES) {
+    throw new PlantScanRequestError('The image exceeds the 16 MB limit.', 413, 'IMAGE_TOO_LARGE');
+  }
+
+  const imageBytes = Buffer.from(encodedData, 'base64');
+  if (
+    imageBytes.length === 0 ||
+    imageBytes.toString('base64').replace(/=+$/, '') !== encodedData.replace(/=+$/, '')
+  ) {
+    throw new PlantScanRequestError('The image data is malformed.', 400, 'INVALID_IMAGE_DATA');
+  }
+
+  const isJpeg = hasValidJpegStructure(imageBytes);
+  const isPng = hasValidPngStructure(imageBytes);
+  const isWebp = hasValidWebpStructure(imageBytes);
+  const signatureMatches =
+    (mimeType === 'image/jpeg' && isJpeg) ||
+    (mimeType === 'image/png' && isPng) ||
+    (mimeType === 'image/webp' && isWebp);
+
+  if (!signatureMatches) {
+    throw new PlantScanRequestError(
+      'The image content does not match its JPEG, PNG, or WebP type.',
+      400,
+      'INVALID_IMAGE_DATA',
+    );
+  }
+
+  return { mimeType, data: imageBytes.toString('base64') };
+}
+
+function parsePlantDiagnosis(responseText: string): Record<string, any> {
+  const trimmedResponse = responseText.trim();
+  const fencedJsonMatch = trimmedResponse.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(fencedJsonMatch ? fencedJsonMatch[1] : trimmedResponse);
+  } catch {
+    throw new PlantScanRequestError(
+      'The AI service returned an unreadable result.',
+      502,
+      'INVALID_MODEL_RESPONSE',
+    );
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new PlantScanRequestError(
+      'The AI service returned an invalid result.',
+      502,
+      'INVALID_MODEL_RESPONSE',
+    );
+  }
+
+  const diagnosis = parsed as Record<string, any>;
+  const hasValidStrings = DIAGNOSIS_STRING_FIELDS.every(
+    (field) => typeof diagnosis[field] === 'string',
+  );
+  const hasValidStringArrays = DIAGNOSIS_STRING_ARRAY_FIELDS.every(
+    (field) =>
+      Array.isArray(diagnosis[field]) &&
+      diagnosis[field].every((value: unknown) => typeof value === 'string'),
+  );
+  const hasValidConfidence =
+    Number.isInteger(diagnosis.confidence) &&
+    diagnosis.confidence >= 0 &&
+    diagnosis.confidence <= 100;
+  const hasValidDiseaseConfidence =
+    Number.isInteger(diagnosis.diseaseConfidence) &&
+    diagnosis.diseaseConfidence >= 0 &&
+    diagnosis.diseaseConfidence <= 100;
+  const hasValidDiagnosis =
+    typeof diagnosis.isPlantImage === 'boolean' &&
+    hasValidStrings &&
+    hasValidStringArrays &&
+    typeof diagnosis.needsMoreInformation === 'boolean' &&
+    DIAGNOSIS_CONDITION_TYPES.has(diagnosis.conditionType) &&
+    DIAGNOSIS_SEVERITIES.has(diagnosis.severity) &&
+    hasValidConfidence &&
+    hasValidDiseaseConfidence;
+
+  if (!hasValidDiagnosis) {
+    throw new PlantScanRequestError(
+      'The AI service returned an incomplete or invalid result.',
+      502,
+      'INVALID_MODEL_RESPONSE',
+    );
+  }
+
+  return diagnosis;
+}
+
+function parseDoctorResponse(responseText: string): {
+  replyText: string;
+  suggestedOptions: string[];
+  diagnosticInsight?: { diagnosis?: string; action?: string; confidence?: string };
+} {
+  const trimmedResponse = responseText.trim();
+  const fencedJsonMatch = trimmedResponse.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(fencedJsonMatch ? fencedJsonMatch[1] : trimmedResponse);
+  } catch {
+    throw new Error('INVALID_DOCTOR_RESPONSE');
+  }
+
+  if (
+    !parsed ||
+    typeof parsed !== 'object' ||
+    Array.isArray(parsed) ||
+    typeof (parsed as { replyText?: unknown }).replyText !== 'string' ||
+    !(parsed as { replyText: string }).replyText.trim()
+  ) {
+    throw new Error('INVALID_DOCTOR_RESPONSE');
+  }
+
+  const result = parsed as {
+    replyText: string;
+    suggestedOptions?: unknown;
+    diagnosticInsight?: {
+      diagnosis?: unknown;
+      action?: unknown;
+      confidence?: unknown;
+    };
+  };
+  if (
+    result.suggestedOptions !== undefined &&
+    (!Array.isArray(result.suggestedOptions) ||
+      !result.suggestedOptions.every((option) => typeof option === 'string'))
+  ) {
+    throw new Error('INVALID_DOCTOR_RESPONSE');
+  }
+  if (
+    result.diagnosticInsight !== undefined &&
+    (typeof result.diagnosticInsight !== 'object' ||
+      result.diagnosticInsight === null ||
+      Array.isArray(result.diagnosticInsight) ||
+      Object.values(result.diagnosticInsight).some(
+        (value) => value !== undefined && typeof value !== 'string',
+      ))
+  ) {
+    throw new Error('INVALID_DOCTOR_RESPONSE');
+  }
+
+  return {
+    replyText: result.replyText.trim(),
+    suggestedOptions: Array.isArray(result.suggestedOptions)
+      ? result.suggestedOptions.filter((option): option is string => typeof option === 'string')
+      : [],
+    diagnosticInsight: result.diagnosticInsight as
+      | { diagnosis?: string; action?: string; confidence?: string }
+      | undefined,
+  };
+}
+
 async function startServer() {
   const app = express();
 
@@ -206,6 +563,24 @@ async function startServer() {
   // Accept large image payloads up to 25MB
   app.use(express.json({ limit: '25mb' }));
   app.use(express.urlencoded({ extended: true, limit: '25mb' }));
+  app.use((error: any, req: any, res: any, next: any) => {
+    if (!req.path.startsWith('/api/')) {
+      return next(error);
+    }
+    if (error?.type === 'entity.too.large') {
+      return res.status(413).json({
+        error: 'The request exceeds the allowed size.',
+        code: 'IMAGE_TOO_LARGE',
+      });
+    }
+    if (error?.type === 'entity.parse.failed') {
+      return res.status(400).json({
+        error: 'The request body is invalid.',
+        code: 'INVALID_REQUEST',
+      });
+    }
+    return next(error);
+  });
 
   // API Health Check
   app.get('/api/health', (req, res) => {
@@ -937,30 +1312,13 @@ ${languageInstruction}
         return res.status(400).json({ error: 'Unsupported language. Use en, gu, or hi.' });
       }
 
-      if (!image || !image.base64) {
-        return res.status(400).json({
-          error: 'Image data is required',
-          code: 'IMAGE_MISSING',
-        });
-      }
+      const { data: cleanBase64, mimeType } = decodePlantImage(image);
 
       if (!process.env.GEMINI_API_KEY) {
         return res.status(503).json({
-          error: 'Gemini API key is not configured in the server environment.',
+          error: 'AI image analysis is not configured on the server.',
           code: 'API_KEY_MISSING',
-          message:
-            'Please ensure GEMINI_API_KEY is configured in your AI Studio project secrets.',
         });
-      }
-
-      // Clean base64 string
-      let cleanBase64 = image.base64;
-      let mimeType = image.mimeType || 'image/jpeg';
-
-      if (cleanBase64.includes(';base64,')) {
-        const parts = cleanBase64.split(';base64,');
-        mimeType = parts[0].replace('data:', '') || mimeType;
-        cleanBase64 = parts[1];
       }
 
       const languageInstruction =
@@ -1073,7 +1431,7 @@ ${contextDescription}
           }
         } catch (modelErr: any) {
           lastModelError = modelErr;
-          console.warn(`[PlantPulse AI] Model ${modelCandidate} unavailable, trying next candidate...`, modelErr?.message || modelErr);
+          console.warn(`[PlantPulse AI] Vision model ${modelCandidate} request failed; trying the next configured candidate.`);
         }
       }
 
@@ -1081,8 +1439,7 @@ ${contextDescription}
         throw lastModelError || new Error('Empty response received from Gemini model');
       }
 
-      const responseText = response.text;
-      const parsedData = JSON.parse(responseText.trim());
+      const parsedData = parsePlantDiagnosis(response.text);
 
       // Auto-record scan activity in MySQL if user is authenticated
       if (req.user && req.user.id) {
@@ -1127,19 +1484,191 @@ ${contextDescription}
         data: parsedData,
       });
     } catch (error: any) {
-      console.error('PlantPulse Analysis Error:', error);
+      if (error instanceof PlantScanRequestError) {
+        if (error.code === 'INVALID_MODEL_RESPONSE') {
+          console.error('[PlantPulse AI] Vision model returned an invalid diagnosis structure.');
+        }
+        return res.status(error.statusCode).json({
+          error: error.message,
+          code: error.code,
+        });
+      }
+
       const isRateLimit =
         error?.status === 429 ||
         error?.message?.includes('RESOURCE_EXHAUSTED') ||
         error?.message?.includes('quota');
+      console.error(
+        `[PlantPulse AI] Image analysis request failed (${isRateLimit ? 'RATE_LIMIT' : 'PROVIDER_ERROR'}).`,
+      );
 
-      return res.status(isRateLimit ? 429 : 500).json({
+      return res.status(isRateLimit ? 429 : 502).json({
         error: isRateLimit
-          ? 'Gemini API quota or rate limit exceeded. Please wait a moment and try again.'
-          : 'Failed to analyze plant image. Please try again.',
-        details: error?.message || 'Unknown analysis error',
+          ? 'AI image analysis is temporarily rate limited. Please wait and try again.'
+          : 'AI image analysis could not be completed. Please try again.',
         code: isRateLimit ? 'RATE_LIMIT' : 'ANALYSIS_ERROR',
       });
+    }
+  });
+
+  app.post('/api/plant-doctor/speech', optionalAuthenticateUser, async (req: any, res) => {
+    const { text, lang } = req.body || {};
+    if (!isSupportedLanguage(lang)) {
+      return res.status(400).json({ error: 'Unsupported language. Use en, gu, or hi.', code: 'INVALID_LANGUAGE' });
+    }
+    if (typeof text !== 'string' || !text.trim() || text.length > 5000) {
+      return res.status(400).json({ error: 'Speech text must contain 1 to 5000 characters.', code: 'INVALID_TEXT' });
+    }
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(503).json({
+        error: 'Speech generation is not configured on the server.',
+        code: 'TTS_NOT_CONFIGURED',
+      });
+    }
+
+    const targetLanguage =
+      lang === 'gu' ? 'natural Gujarati in the Gujarati script' :
+      lang === 'hi' ? 'natural Hindi in the Devanagari script' :
+      'natural English';
+    const timeout = new AbortController();
+    const timeoutId = setTimeout(() => timeout.abort(), 60_000);
+    try {
+      const ttsModels = ['gemini-3.8-flash-tts', 'gemini-3.8-flash-lite-tts'];
+      let providerResponse: Response | null = null;
+      let rateLimitedResponse: Response | null = null;
+      for (const model of ttsModels) {
+        const candidateResponse = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': process.env.GEMINI_API_KEY,
+          },
+          body: JSON.stringify({
+            model,
+            input: [
+              {
+                type: 'user_input',
+                content: [
+                  {
+                    type: 'text',
+                    text: text.trim(),
+                    annotations: [
+                      {
+                        type: 'speech_metadata',
+                        style: `Clear, calm, natural speech in ${targetLanguage}. Preserve the transcript verbatim; do not translate or paraphrase.`,
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+            response_format: { type: 'audio' },
+            generation_config: { speech_config: [{ voice: 'Kore' }] },
+          }),
+          signal: timeout.signal,
+        });
+        if (candidateResponse.ok) {
+          providerResponse = candidateResponse;
+          break;
+        }
+        console.warn(
+          `[PlantPulse AI] TTS model ${model} failed (HTTP ${candidateResponse.status}).`,
+        );
+        if (candidateResponse.status === 429) {
+          rateLimitedResponse = candidateResponse;
+          continue;
+        }
+        if (rateLimitedResponse) {
+          providerResponse = rateLimitedResponse;
+          break;
+        }
+        if (candidateResponse.status !== 429) {
+          providerResponse = candidateResponse;
+          break;
+        }
+      }
+
+      if (!providerResponse && rateLimitedResponse) {
+        providerResponse = rateLimitedResponse;
+      }
+
+      if (!providerResponse) {
+        console.error('[PlantPulse AI] Speech generation failed without a provider response.');
+        return res.status(502).json({
+          error: 'Speech generation could not be completed.',
+          code: 'TTS_PROVIDER_ERROR',
+        });
+      }
+      if (!providerResponse.ok) {
+        const status = providerResponse.status;
+        const code = status === 429 ? 'TTS_RATE_LIMIT' : 'TTS_PROVIDER_ERROR';
+        if (status === 429) {
+          const retryAfter = providerResponse.headers.get('retry-after');
+          if (retryAfter && /^\d{1,4}$/.test(retryAfter)) {
+            res.setHeader('Retry-After', retryAfter);
+          }
+        }
+        const upstreamError = await providerResponse.json().catch(() => null);
+        const providerStatus =
+          typeof upstreamError?.error?.status === 'string'
+            ? upstreamError.error.status
+            : undefined;
+        console.error(
+          `[PlantPulse AI] Speech generation failed (HTTP ${status}${providerStatus ? `, ${providerStatus}` : ''}).`,
+        );
+        return res.status(status === 429 ? 429 : 502).json({
+          error: status === 429
+            ? 'Speech generation is temporarily rate limited or the TTS quota is exhausted.'
+            : 'Speech generation could not be completed.',
+          code,
+        });
+      }
+
+      const result = await providerResponse.json();
+      let audioData = typeof result?.output_audio?.data === 'string' ? result.output_audio.data : '';
+      if (!audioData && Array.isArray(result?.steps)) {
+        for (const step of [...result.steps].reverse()) {
+          if (step?.type !== 'model_output' || !Array.isArray(step.content)) continue;
+          const audioContent = [...step.content].reverse().find(
+            (content: any) => content?.type === 'audio' && typeof content.data === 'string',
+          );
+          if (audioContent) {
+            audioData = audioContent.data;
+            break;
+          }
+        }
+      }
+
+      if (!audioData || audioData.length > 24_000_000) {
+        console.error('[PlantPulse AI] Speech generation returned no usable audio.');
+        return res.status(502).json({
+          error: 'Speech generation returned an invalid audio response.',
+          code: 'TTS_INVALID_RESPONSE',
+        });
+      }
+      const audioBuffer = Buffer.from(audioData, 'base64');
+      if (audioBuffer.length < 44 || audioBuffer.toString('ascii', 0, 4) !== 'RIFF') {
+        console.error('[PlantPulse AI] Speech generation returned an unsupported audio format.');
+        return res.status(502).json({
+          error: 'Speech generation returned an unsupported audio format.',
+          code: 'TTS_INVALID_RESPONSE',
+        });
+      }
+
+      res.setHeader('Content-Type', 'audio/wav');
+      res.setHeader('Cache-Control', 'no-store');
+      return res.send(audioBuffer);
+    } catch (error: any) {
+      const timedOut = timeout.signal.aborted;
+      console.error(`[PlantPulse AI] Speech generation request failed (${timedOut ? 'TIMEOUT' : 'NETWORK_ERROR'}).`);
+      return res.status(timedOut ? 504 : 502).json({
+        error: timedOut
+          ? 'Speech generation timed out. Please try again.'
+          : 'Speech generation is temporarily unavailable.',
+        code: timedOut ? 'TTS_TIMEOUT' : 'TTS_NETWORK_ERROR',
+      });
+    } finally {
+      clearTimeout(timeoutId);
     }
   });
 
@@ -1188,28 +1717,56 @@ Do NOT use English words or sentences like "Please check the leaves". Use proper
 Technical botanical names (e.g. Alternaria solani) may remain in Latin if necessary, but all explanations around them must be in Hindi.`
           : `Respond 100% strictly in clear, helpful, natural English. Do not mix languages.`;
 
-      let contextPrompt = `
-You are "PlantPulse AI — Your Plant Doctor", a friendly, highly intelligent botanical consultant.
-You assist both commercial farmers in Gujarat and urban home/balcony gardeners.
-
-User Context:
-- Persona: ${userContext?.userType || 'Farmer'}
-- Primary Plant/Crop: ${userContext?.cropName || 'Tomato'}
-- Location: ${userContext?.districtName || 'Rajkot'}, Gujarat
-- Growing Location: ${userContext?.growingLocation || 'Field / Balcony'}
-`;
-
-      if (latestScanContext) {
-        contextPrompt += `
-LATEST OPTICAL SCAN ON RECORD:
-- Plant: ${latestScanContext.plantName}
-- Condition: ${latestScanContext.condition} (Type: ${latestScanContext.conditionType})
-- Confidence: ${latestScanContext.confidence}%
-- Severity: ${latestScanContext.severity}
-- Observed Symptoms: ${Array.isArray(latestScanContext.symptoms) ? latestScanContext.symptoms.join(', ') : latestScanContext.symptoms}
-- Watering Guidance: ${latestScanContext.wateringAdvice || 'Normal'}
-`;
-      }
+      const safeHistory = Array.isArray(messages)
+        ? messages
+            .filter(
+              (message: any) =>
+                message &&
+                (message.sender === 'user' || message.sender === 'doctor') &&
+                typeof message.text === 'string' &&
+                message.text.trim(),
+            )
+            .slice(-6)
+            .map((message: any) => ({
+              sender: message.sender === 'doctor' ? 'assistant' : 'user',
+              text: message.text.slice(0, 4000),
+            }))
+        : [];
+      const safeUserContext = {
+        persona: typeof userContext?.userType === 'string' ? userContext.userType : 'gardener',
+        crop: typeof userContext?.cropName === 'string' ? userContext.cropName : '',
+        district: typeof userContext?.districtName === 'string' ? userContext.districtName : '',
+        growingLocation:
+          typeof userContext?.growingLocation === 'string' ? userContext.growingLocation : '',
+      };
+      const safeScanContext =
+        latestScanContext && typeof latestScanContext === 'object'
+          ? {
+              plantName:
+                typeof latestScanContext.plantName === 'string' ? latestScanContext.plantName : '',
+              condition:
+                typeof latestScanContext.condition === 'string' ? latestScanContext.condition : '',
+              conditionType:
+                typeof latestScanContext.conditionType === 'string'
+                  ? latestScanContext.conditionType
+                  : '',
+              confidence:
+                typeof latestScanContext.confidence === 'number'
+                  ? latestScanContext.confidence
+                  : null,
+              severity:
+                typeof latestScanContext.severity === 'string' ? latestScanContext.severity : '',
+              symptoms: Array.isArray(latestScanContext.symptoms)
+                ? latestScanContext.symptoms
+                    .filter((symptom: unknown) => typeof symptom === 'string')
+                    .slice(0, 8)
+                : [],
+              wateringAdvice:
+                typeof latestScanContext.wateringAdvice === 'string'
+                  ? latestScanContext.wateringAdvice
+                  : '',
+            }
+          : null;
 
       const DOCTOR_RESPONSE_SCHEMA = {
         type: Type.OBJECT,
@@ -1221,10 +1778,12 @@ LATEST OPTICAL SCAN ON RECORD:
           suggestedOptions: {
             type: Type.ARRAY,
             items: { type: Type.STRING },
-            description: `3 to 5 quick multiple choice chips or follow-up question options strictly in ${targetLanguageNativeName}.`,
+            description: `2 to 3 concise, topic-relevant follow-up suggestions strictly in ${targetLanguageNativeName}.`,
           },
           diagnosticInsight: {
             type: Type.OBJECT,
+            description:
+              'Include only when the user asks about actual plant symptoms or an attached image gives relevant diagnostic evidence. Omit for general knowledge, growing instructions, or other non-diagnostic questions. Never present a confidence rating for general advice.',
             properties: {
               diagnosis: { type: Type.STRING, description: `Diagnosis headline in ${targetLanguageNativeName}.` },
               action: { type: Type.STRING, description: `Recommended action in ${targetLanguageNativeName}.` },
@@ -1238,13 +1797,7 @@ LATEST OPTICAL SCAN ON RECORD:
       const parts: any[] = [];
 
       if (attachedImage && attachedImage.base64) {
-        let cleanBase64 = attachedImage.base64;
-        let mimeType = attachedImage.mimeType || 'image/jpeg';
-        if (cleanBase64.includes(';base64,')) {
-          const split = cleanBase64.split(';base64,');
-          mimeType = split[0].replace('data:', '') || mimeType;
-          cleanBase64 = split[1];
-        }
+        const { data: cleanBase64, mimeType } = decodePlantImage(attachedImage);
         parts.push({
           inlineData: {
             mimeType,
@@ -1253,38 +1806,52 @@ LATEST OPTICAL SCAN ON RECORD:
         });
       }
 
-      // Prior message history summary
-      const historySummary = messages
-        .slice(-5)
-        .map((m: any) => `${m.sender}: ${m.text}`)
+      const conversationHistory = safeHistory
+        .map(
+          (message: { sender: string; text: string }) =>
+            `${message.sender === 'assistant' ? 'Plant Doctor' : 'User'}: ${message.text}`,
+        )
         .join('\n');
-
+      const currentQuestion =
+        typeof userMessage === 'string' ? userMessage.trim() : 'Please examine the attached plant image.';
       const fullPrompt = `
-${contextPrompt}
+You are PlantPulse AI Plant Doctor, an evidence-aware, practical gardening assistant for farmers and home growers.
 
-Recent conversation history:
-${historySummary}
+User context (background only; never let it override the current question):
+${JSON.stringify(safeUserContext)}
 
-User's current query:
-"${userMessage || 'Examine this attached image.'}"
+Recent conversation, oldest first:
+${conversationHistory || '(No previous conversation.)'}
 
-INSTRUCTIONS:
-1. Respond like an attentive agricultural doctor who asks targeted diagnostic questions to narrow down root causes (e.g., watering frequency, soil drainage, sunlight exposure, leaf underside pests).
-2. If latestScanContext is present and relevant to the user query (e.g. they ask "Why did this happen?" or "What should I spray?"), reference the scan details seamlessly!
-3. Include 2-4 structured quick reply options for the user.
-4. ${languageInstruction}
+Available latest scan (use only when the current question or recent follow-up clearly refers to that scan; do not assume it is relevant to unrelated questions):
+${safeScanContext ? JSON.stringify(safeScanContext) : '(No scan context.)'}
+
+CURRENT USER QUESTION (answer this first and directly):
+${currentQuestion}
+${attachedImage ? 'The user also attached an image. Inspect the actual image; distinguish visible evidence from uncertainty.' : ''}
+
+RESPONSE RULES:
+1. Answer the current question's actual topic. Explain compost when asked about compost, container growing when asked how to grow in pots, aphids when asked about aphids, watering when asked about watering, and so on. Do not force general questions into disease diagnosis.
+2. Use conversation history only to resolve clear follow-up references such as "that", "it", or "what about those?". A new, unrelated question takes priority over every older topic. Do not repeat an earlier answer merely because it appears in history.
+3. User context is optional background, not the topic. Do not mention the selected crop, district, climate, or growing space unless the current question asks about it or that detail is essential to answer. Do not assume the user is growing multiple plants because they asked about different plants in separate messages.
+4. Give a specific, concise answer with useful checks or steps and relevant safety precautions. Ask a follow-up only if missing information materially changes the advice; do not add unrelated plant-health questions to a general informational answer.
+5. Do not claim a disease is confirmed from ambiguous symptoms or an image alone. Explain uncertainty and recommend confirmation when appropriate. Include diagnosticInsight only for a genuine symptom/image diagnosis; omit it for general advice and never label general advice with diagnostic confidence.
+6. This application has no live weather data source. If asked for current/today's weather, clearly say live weather is unavailable; never infer current conditions from location, date, or dashboard estimates.
+7. If referring to image or scan evidence, use only what is actually visible or supplied in the scan context. Do not invent findings.
+8. Add 2-3 optional, topic-relevant follow-up suggestions. They must not replace or dilute the direct answer.
+9. ${languageInstruction}
 `;
 
       parts.push({ text: fullPrompt });
 
       const doctorConfig = {
-        systemInstruction: `You are PlantPulse AI — Your Plant Doctor. You are a warm, highly knowledgeable agricultural and botanical physician.
+        systemInstruction: `        You are PlantPulse AI — Your Plant Doctor. You are a warm, knowledgeable gardening assistant who answers the user's actual question directly.
 CRITICAL LANGUAGE REQUIREMENT: You MUST speak and generate all content 100% in ${targetLanguageFullName} (${targetLanguageNativeName}).
 Every single field in the JSON response (replyText, all items in suggestedOptions, diagnosticInsight.diagnosis, diagnosticInsight.action, diagnosticInsight.confidence) MUST be completely written in ${targetLanguageNativeName}.
 Never mix English sentences or half-English phrases into Gujarati or Hindi responses. Only standard Latin binomial botanical specimen names may be kept in Latin, but everything else must be fully in ${targetLanguageNativeName}.`,
         responseMimeType: 'application/json',
         responseSchema: DOCTOR_RESPONSE_SCHEMA,
-        temperature: 0.3,
+                temperature: 0.55,
       };
 
       let response: any;
@@ -1303,7 +1870,7 @@ Never mix English sentences or half-English phrases into Gujarati or Hindi respo
           }
         } catch (dErr: any) {
           lastDoctorError = dErr;
-          console.warn(`[PlantPulse Doctor] Model ${modelCandidate} unavailable, trying next...`, dErr?.message || dErr);
+          console.warn(`[PlantPulse Doctor] Model ${modelCandidate} request failed; trying the next configured candidate.`);
         }
       }
 
@@ -1311,8 +1878,7 @@ Never mix English sentences or half-English phrases into Gujarati or Hindi respo
         throw lastDoctorError || new Error('Empty response from Gemini');
       }
 
-      const responseText = response.text;
-      const parsed = JSON.parse(responseText.trim());
+      const parsed = parseDoctorResponse(response.text);
 
       // Auto-record doctor chat in MySQL if user is authenticated
       if (req.user && req.user.id) {
@@ -1325,8 +1891,8 @@ Never mix English sentences or half-English phrases into Gujarati or Hindi respo
             content: {
               query: previewQuery,
               reply: parsed.replyText || 'Advice provided',
-              recommendedAction: parsed.recommendedAction || '',
-              quickReplies: parsed.quickReplies || [],
+              recommendedAction: parsed.diagnosticInsight?.action || '',
+              quickReplies: parsed.suggestedOptions,
               timestamp: new Date().toISOString(),
             },
           });
@@ -1342,10 +1908,25 @@ Never mix English sentences or half-English phrases into Gujarati or Hindi respo
         suggestedActions: parsed.suggestedOptions || [],
       });
     } catch (error: any) {
-      console.error('PlantPulse Doctor Error:', error);
-      return res.status(500).json({
-        error: 'Unable to consult Plant Doctor right now.',
-        details: error?.message,
+      const isInvalidResponse = error?.message === 'INVALID_DOCTOR_RESPONSE';
+      const isRateLimit =
+        error?.status === 429 ||
+        error?.message?.includes('RESOURCE_EXHAUSTED') ||
+        error?.message?.includes('quota');
+      console.error(
+        `[PlantPulse Doctor] Consultation failed (${isInvalidResponse ? 'INVALID_RESPONSE' : isRateLimit ? 'RATE_LIMIT' : 'PROVIDER_ERROR'}).`,
+      );
+      return res.status(isInvalidResponse ? 502 : isRateLimit ? 429 : 502).json({
+        error: isInvalidResponse
+          ? 'Plant Doctor received an unreadable AI response.'
+          : isRateLimit
+          ? 'Plant Doctor is temporarily rate limited. Please try again shortly.'
+          : 'Plant Doctor is temporarily unavailable. Please try again.',
+        code: isInvalidResponse
+          ? 'INVALID_DOCTOR_RESPONSE'
+          : isRateLimit
+          ? 'RATE_LIMIT'
+          : 'DOCTOR_UNAVAILABLE',
       });
     }
   });

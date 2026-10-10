@@ -30,6 +30,24 @@ import { UserType } from './UserTypeSelection.tsx';
 import { GUJARAT_DISTRICTS, localizeGujaratLocation } from '../data/gujaratLocations.ts';
 import { SAMPLE_SPECIMENS, SampleSpecimen } from '../data/sampleSpecimens.ts';
 
+const MAX_UPLOAD_SIZE_BYTES = 16 * 1024 * 1024;
+const SUPPORTED_UPLOAD_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+type ScanErrorTranslationKey =
+  | 'scanImageInvalid'
+  | 'scanConfigMissing'
+  | 'scanFileInvalid'
+  | 'scanFileTooLarge'
+  | 'scanInvalidResponse'
+  | 'scanRateLimit'
+  | 'scanFailure';
+
+class ScanUiError extends Error {
+  constructor(readonly translationKey: ScanErrorTranslationKey) {
+    super(translationKey);
+    this.name = 'ScanUiError';
+  }
+}
+
 export interface SavedPlantItem {
   id: string;
   name: string;
@@ -107,34 +125,65 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
   const [activeSpecimenId, setActiveSpecimenId] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<PlantDiagnosisData | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
-  const [apiErrorMessage, setApiErrorMessage] = useState<string | null>(null);
+  const [apiErrorKey, setApiErrorKey] = useState<ScanErrorTranslationKey | null>(null);
   const [activeTab, setActiveTab] = useState<'treatment' | 'prevention' | 'monitoring'>('treatment');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const previousLangRef = useRef(lang);
   const latestLangRef = useRef(lang);
   const t = translations[lang];
+  const apiErrorMessage = apiErrorKey ? t.extra[apiErrorKey] : null;
 
   // Helper to resize/compress large images via canvas before uploading
+  const rejectImageUpload = (translationKey: ScanErrorTranslationKey) => {
+    setPreviewImage(null);
+    setActiveSpecimenId(null);
+    setAnalysisResult(null);
+    setValidationError(null);
+    setHasSaved(false);
+    setApiErrorKey(translationKey);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const processImageFile = (file: File) => {
-    if (!file.type.startsWith('image/')) {
-      alert(t.extra.scanFileInvalid);
+    if (!file.size) {
+      rejectImageUpload('scanImageInvalid');
       return;
     }
 
-    if (file.size > 16 * 1024 * 1024) {
-      alert(t.extra.scanFileTooLarge);
+    if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+      rejectImageUpload('scanFileTooLarge');
+      return;
+    }
+
+    if (!SUPPORTED_UPLOAD_TYPES.has(file.type.toLowerCase())) {
+      rejectImageUpload('scanFileInvalid');
       return;
     }
 
     const reader = new FileReader();
+    reader.onerror = () => {
+      rejectImageUpload('scanImageInvalid');
+    };
     reader.onload = (event) => {
-      if (!event.target?.result) return;
-      const dataUrl = event.target.result as string;
+      if (typeof event.target?.result !== 'string') {
+        rejectImageUpload('scanImageInvalid');
+        return;
+      }
+      const dataUrl = event.target.result;
 
       // Create an HTML Image to resize if dimensions exceed 1600px
       const img = new Image();
+      img.onerror = () => {
+        rejectImageUpload('scanImageInvalid');
+      };
       img.onload = () => {
+        if (!img.naturalWidth || !img.naturalHeight) {
+          rejectImageUpload('scanImageInvalid');
+          return;
+        }
         const maxDim = 1600;
         let width = img.width;
         let height = img.height;
@@ -158,7 +207,7 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
             setPreviewImage(optimizedBase64);
             setActiveSpecimenId(null);
             setValidationError(null);
-            setApiErrorMessage(null);
+            setApiErrorKey(null);
             executeAnalysis(optimizedBase64, selectedCrop);
             return;
           }
@@ -168,7 +217,7 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
         setPreviewImage(dataUrl);
         setActiveSpecimenId(null);
         setValidationError(null);
-        setApiErrorMessage(null);
+        setApiErrorKey(null);
         executeAnalysis(dataUrl, selectedCrop);
       };
       img.src = dataUrl;
@@ -189,7 +238,7 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
     setActiveSpecimenId(specimen.id);
     setPreviewImage(specimen.dataUrl);
     setValidationError(null);
-    setApiErrorMessage(null);
+    setApiErrorKey(null);
     setHasSaved(false);
     if (specimen.cropType !== 'Other') {
       setSelectedCrop(specimen.cropType);
@@ -201,7 +250,7 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
     setIsAnalyzing(true);
     setAnalysisResult(null);
     setValidationError(null);
-    setApiErrorMessage(null);
+    setApiErrorKey(null);
     setHasSaved(false);
 
     // Staged progress indicators
@@ -234,6 +283,11 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
     }, 1400);
 
     try {
+      const mimeTypeMatch = imageDataUrl.match(/^data:(image\/(?:jpeg|png|webp));base64,/i);
+      if (!mimeTypeMatch) {
+        throw new ScanUiError('scanImageInvalid');
+      }
+
       const response = await fetch('/api/analyze-plant', {
         method: 'POST',
         headers: {
@@ -243,11 +297,7 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
         body: JSON.stringify({
           image: {
             base64: imageDataUrl,
-            mimeType: imageDataUrl.startsWith('data:image/png')
-              ? 'image/png'
-              : imageDataUrl.startsWith('data:image/svg')
-              ? 'image/svg+xml'
-              : 'image/jpeg',
+            mimeType: mimeTypeMatch[1].toLowerCase(),
           },
           userContext: {
             userType,
@@ -264,12 +314,23 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
 
       if (!response.ok) {
         const errJson = await response.json().catch(() => null);
-        throw new Error(t.extra.scanFailure);
+        const errorCode = typeof errJson?.code === 'string' ? errJson.code : '';
+        const errorKeys: Record<string, ScanErrorTranslationKey> = {
+          API_KEY_MISSING: 'scanConfigMissing',
+          IMAGE_MISSING: 'scanImageInvalid',
+          IMAGE_TOO_LARGE: 'scanFileTooLarge',
+          INVALID_IMAGE_DATA: 'scanImageInvalid',
+          INVALID_IMAGE_TYPE: 'scanFileInvalid',
+          INVALID_MODEL_RESPONSE: 'scanInvalidResponse',
+          RATE_LIMIT: 'scanRateLimit',
+          UNSUPPORTED_IMAGE_TYPE: 'scanFileInvalid',
+        };
+        throw new ScanUiError(errorKeys[errorCode] || 'scanFailure');
       }
 
       const json = await response.json();
       if (!json.success || !json.data) {
-        throw new Error(t.extra.scanFailure);
+        throw new ScanUiError('scanInvalidResponse');
       }
 
       if (latestLangRef.current !== lang) {
@@ -300,8 +361,8 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
     } catch (err: any) {
       clearTimeout(stepTimer1);
       clearTimeout(stepTimer2);
-      console.error('Scan analysis error:', err);
-      setApiErrorMessage(t.extra.scanFailure);
+      console.error('Scan analysis failed.');
+      setApiErrorKey(err instanceof ScanUiError ? err.translationKey : 'scanFailure');
       setAnalysisResult(null);
       setIsAnalyzing(false);
     }
@@ -312,7 +373,7 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
     setActiveSpecimenId(null);
     setAnalysisResult(null);
     setValidationError(null);
-    setApiErrorMessage(null);
+    setApiErrorKey(null);
     setHasSaved(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -399,7 +460,7 @@ export const ScanStudio: React.FC<ScanStudioProps> = ({
       <input
         type="file"
         ref={fileInputRef}
-        accept="image/*"
+        accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
         onChange={(e) => {
           const file = e.target.files?.[0];
           if (file) processImageFile(file);

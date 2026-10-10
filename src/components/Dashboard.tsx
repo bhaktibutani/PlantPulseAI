@@ -414,7 +414,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     <div className="min-h-screen bg-[#F7F5EF] flex flex-col md:flex-row text-[#17382B] selection:bg-[#E8F1E7] selection:text-[#245C43]">
       {/* LEFT SIDEBAR: Professional Application Shell */}
       <aside className="w-full md:w-64 lg:w-72 bg-white border-r border-[#8FAF91]/30 flex flex-col justify-between shrink-0 select-none">
-        <div>
+        <div className="min-w-0 flex-1">
           {/* Brand Wordmark & Mode Header */}
           <div className="p-6 border-b border-[#8FAF91]/25">
             <Logo size="md" onClick={onBackToLanding} className="cursor-pointer" />
@@ -707,15 +707,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 ))}
               </select>
             </div>
-            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-[#17382B] font-display">
-              {currentUser
-                ? `${uiCopy(lang, 'Welcome,')} ${currentUser.name}`
-                : userType === 'farmer'
-                ? t.greetingFarmer
-                : t.greetingUrban}{' '}
-              👋
+            <h1 className="text-xl font-extrabold text-[#17382B] font-display sm:text-3xl lg:text-4xl">
+              <span className="break-words">
+                {currentUser
+                  ? `${uiCopy(lang, 'Welcome,')} ${currentUser.name}`
+                  : userType === 'farmer'
+                  ? t.greetingFarmer
+                  : t.greetingUrban}
+              </span>
+              <span aria-hidden="true" className="whitespace-nowrap">{'\u00a0'}👋</span>
             </h1>
-            <p className="text-sm text-[#476353] mt-1 font-normal">
+            <p className="mt-1 max-w-2xl text-sm font-normal text-[#476353]">
               {userType === 'farmer'
                 ? t.extra.dashboardFieldSummary
                     .replace('{place}', farmOrBalconyTitle)
@@ -724,7 +726,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </p>
           </div>
 
-          <div className="flex items-center gap-3 self-start sm:self-auto">
+          <div className="flex shrink-0 flex-wrap items-center gap-3 self-start sm:self-auto">
             <button
               onClick={onChangePersona}
               className="inline-flex items-center gap-1.5 text-xs font-bold text-[#245C43] bg-white border border-[#8FAF91]/40 px-3.5 py-2 rounded-xl hover:bg-[#E8F1E7] transition-colors shadow-2xs cursor-pointer"
@@ -1684,46 +1686,46 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <>
             {/* DASHBOARD HERO AREA: “Today at a Glance” Powered by Weather Model */}
             <section className="bg-white rounded-3xl border border-[#8FAF91]/40 p-6 sm:p-8 shadow-xs">
-              <div className="flex items-center justify-between mb-5 border-b border-[#8FAF91]/25 pb-3">
+              <div className="mb-5 flex flex-col gap-2 border-b border-[#8FAF91]/25 pb-3 sm:flex-row sm:items-center sm:justify-between">
                 <span className="text-xs font-extrabold tracking-widest uppercase text-[#9A7653]">
                   {t.todayGlance}
                 </span>
-                <span className="text-xs font-mono text-[#546b5e]">
-                  {uiCopy(lang, 'Station:')} {currentDistrictId.toUpperCase()} · {uiCopy(lang, 'Synced 5m ago')}
+                <span className="text-right text-xs font-mono text-[#546b5e]">
+                  {uiCopy(lang, 'Station:')} {currentDistrictId.toUpperCase()} · {t.extra.weatherEstimatedData}
                 </span>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
                 {/* Atmospheric Metrics (5 cols) */}
-                <div className="lg:col-span-5 grid grid-cols-3 gap-3 bg-[#FAF8F3] p-4 rounded-2xl border border-[#8FAF91]/30">
-                  <div className="space-y-1">
-                    <span className="text-[11px] font-bold text-[#546b5e] uppercase block">
+                <div className="lg:col-span-5 grid min-w-0 grid-cols-3 gap-2 sm:gap-3 bg-[#FAF8F3] p-3 sm:p-4 rounded-2xl border border-[#8FAF91]/30">
+                  <div className="min-w-0 space-y-1">
+                    <span className="block break-words text-[11px] font-bold leading-tight text-[#546b5e] uppercase">
                       {t.weatherLabel}
                     </span>
-                    <span className="text-xl font-black text-[#17382B] font-mono block">
+                    <span className="block whitespace-nowrap text-lg font-black text-[#17382B] font-mono sm:text-xl">
                       {weather.temperature}
                     </span>
-                    <span className="text-[11px] text-[#476353]">{weather.condition[lang]}</span>
+                    <span className="block break-words text-[11px] leading-tight text-[#476353]">{weather.condition[lang]}</span>
                   </div>
 
-                  <div className="space-y-1 border-l border-[#8FAF91]/25 pl-3">
-                    <span className="text-[11px] font-bold text-[#546b5e] uppercase block">
+                  <div className="min-w-0 space-y-1 border-l border-[#8FAF91]/25 pl-2 sm:pl-3">
+                    <span className="block break-words text-[11px] font-bold leading-tight text-[#546b5e] uppercase">
                       {t.humidityLabel}
                     </span>
-                    <span className="text-xl font-black text-[#17382B] font-mono block">
+                    <span className="block whitespace-nowrap text-lg font-black text-[#17382B] font-mono sm:text-xl">
                       {weather.humidity}%
                     </span>
-                    <span className="text-[11px] text-[#476353]">{uiCopy(lang, 'Wind:')} {weather.windSpeed}</span>
+                    <span className="block break-words text-[11px] leading-tight text-[#476353]">{uiCopy(lang, 'Wind:')} {weather.windSpeed}</span>
                   </div>
 
-                  <div className="space-y-1 border-l border-[#8FAF91]/25 pl-3">
-                    <span className="text-[11px] font-bold text-[#546b5e] uppercase block">
+                  <div className="min-w-0 space-y-1 border-l border-[#8FAF91]/25 pl-2 sm:pl-3">
+                    <span className="block break-words text-[11px] font-bold leading-tight text-[#546b5e] uppercase">
                       {t.rainProbLabel}
                     </span>
-                    <span className="text-xl font-black text-[#245C43] font-mono block">
+                    <span className="block whitespace-nowrap text-lg font-black text-[#245C43] font-mono sm:text-xl">
                       {weather.rainProbability}%
                     </span>
-                    <span className={`text-[11px] font-bold ${weather.rainProbability >= 60 ? 'text-[#E5A93D]' : 'text-[#245C43]'}`}>
+                    <span className={`block break-words text-[11px] font-bold leading-tight ${weather.rainProbability >= 60 ? 'text-[#E5A93D]' : 'text-[#245C43]'}`}>
                       {uiCopy(lang, weather.rainProbability >= 60 ? 'Rain expected' : 'Dry conditions')}
                     </span>
                   </div>

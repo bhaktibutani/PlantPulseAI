@@ -62,6 +62,79 @@ interface Message {
   >;
 }
 
+const getSpeakableResponse = (
+  message: Message,
+  labels: { diagnosis: string; confidence: string; recommendation: string },
+): string => {
+  const segments = [
+    { text: message.text, label: '' },
+    { text: message.recommendation?.diagnosis || '', label: labels.diagnosis },
+    { text: message.recommendation?.confidence || '', label: labels.confidence },
+    { text: message.recommendation?.action || '', label: labels.recommendation },
+  ].filter((segment) => segment.text.trim().length > 0);
+  const seenSentences = new Set<string>();
+
+  return segments
+    .flatMap(({ text, label }) =>
+      text
+        .split(/(?<=[.!?।])\s+|\n+/u)
+        .map((sentence) => sentence.trim())
+        .filter((sentence) => {
+          const normalized = sentence.toLocaleLowerCase().replace(/[^\p{L}\p{N}%]+/gu, '');
+          if (!normalized || seenSentences.has(normalized)) return false;
+          seenSentences.add(normalized);
+          return true;
+        })
+        .map((sentence) => (label ? `${label}: ${sentence}` : sentence)),
+    )
+    .join(' ');
+};
+
+const splitSpeechText = (text: string, maxLength = 2400): string[] => {
+  const chunks: string[] = [];
+  let remaining = text.trim();
+  while (remaining.length > maxLength) {
+    let splitAt = -1;
+    const boundaryRegex = /[.!?।]\s|\n/gu;
+    for (const boundary of remaining.matchAll(boundaryRegex)) {
+      const end = boundary.index + 1;
+      if (end > maxLength) break;
+      if (end > maxLength / 2) splitAt = end;
+    }
+    if (splitAt < maxLength / 2) splitAt = remaining.lastIndexOf(' ', maxLength);
+    if (splitAt < maxLength / 2) splitAt = maxLength;
+    if (splitAt > 0 && /[\uD800-\uDBFF]/u.test(remaining[splitAt - 1])) splitAt -= 1;
+    chunks.push(remaining.slice(0, splitAt).trim());
+    remaining = remaining.slice(splitAt).trim();
+  }
+  if (remaining) chunks.push(remaining);
+  return chunks;
+};
+
+interface SpeechRecognitionLike {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  onstart: (() => void) | null;
+  onresult: ((event: SpeechRecognitionResultEventLike) => void) | null;
+  onerror: ((event: { error?: string }) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+
+interface SpeechRecognitionResultEventLike {
+  results: ArrayLike<{
+    isFinal: boolean;
+    0: { transcript: string };
+  }>;
+}
+
+interface SpeechRequestWindow extends Window {
+  SpeechRecognition?: new () => SpeechRecognitionLike;
+  webkitSpeechRecognition?: new () => SpeechRecognitionLike;
+}
+
 export const PlantDoctorView: React.FC<PlantDoctorViewProps> = ({
   userType,
   lang: propLang,
@@ -81,12 +154,71 @@ export const PlantDoctorView: React.FC<PlantDoctorViewProps> = ({
 
   const [inputText, setInputText] = useState('');
   const [isRecording, setIsRecording] = useState(false);
+  const [voiceFeedback, setVoiceFeedback] = useState('');
+  const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const availableVoicesRef = useRef<SpeechSynthesisVoice[]>([]);
+  const ttsAbortRef = useRef<AbortController | null>(null);
+  const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
+  const ttsObjectUrlRef = useRef<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [requestError, setRequestError] = useState('');
+  const [retryPayload, setRetryPayload] = useState<{ query: string; image: string | null } | null>(null);
   const [isLocalizing, setIsLocalizing] = useState(false);
   const [attachedImage, setAttachedImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const speechRecognitionRef = useRef<any>(null);
+  const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const sendingRef = useRef(false);
+  const speechSynthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const speechRequestRef = useRef(0);
+  const recognitionCancelledRef = useRef(false);
+  const recognitionStartTimeoutRef = useRef<number | null>(null);
+
+  const cancelSpeechPlayback = () => {
+    speechRequestRef.current += 1;
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    speechSynthesisRef.current = null;
+    ttsAbortRef.current?.abort();
+    ttsAbortRef.current = null;
+    const audio = ttsAudioRef.current;
+    ttsAudioRef.current = null;
+    if (audio) {
+      audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
+    }
+    if (ttsObjectUrlRef.current) {
+      URL.revokeObjectURL(ttsObjectUrlRef.current);
+      ttsObjectUrlRef.current = null;
+    }
+    setSpeakingMessageId(null);
+  };
+
+  useEffect(() => {
+    if (!('speechSynthesis' in window)) return;
+    const synth = window.speechSynthesis;
+    const refreshVoices = () => {
+      const voices = synth.getVoices();
+      availableVoicesRef.current = voices;
+      setAvailableVoices(voices);
+    };
+    refreshVoices();
+    synth.addEventListener('voiceschanged', refreshVoices);
+    return () => synth.removeEventListener('voiceschanged', refreshVoices);
+  }, []);
+
+  useEffect(() => {
+    cancelSpeechPlayback();
+    setVoiceFeedback('');
+  }, [currentLang]);
+
+  useEffect(
+    () => () => {
+      cancelSpeechPlayback();
+    },
+    [],
+  );
 
   // Synchronize when parent propLang changes
   useEffect(() => {
@@ -243,7 +375,7 @@ export const PlantDoctorView: React.FC<PlantDoctorViewProps> = ({
     };
 
     const targetList = starterSets[targetLang] || starterSets.en;
-    return targetList.map((item, idx) => ({
+    return targetList.slice(0, 1).map((item, idx) => ({
       ...item,
       translations: {
         en: { text: starterSets.en[idx]?.text || '', options: starterSets.en[idx]?.options },
@@ -263,6 +395,17 @@ export const PlantDoctorView: React.FC<PlantDoctorViewProps> = ({
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+
+  useEffect(
+    () => () => {
+      speechRecognitionRef.current?.stop();
+      if (recognitionStartTimeoutRef.current !== null) {
+        window.clearTimeout(recognitionStartTimeoutRef.current);
+      }
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    },
+    [],
+  );
 
   const localizedMessageTime = (targetLang: Language, time: string) => {
     const isRecent = ['Just now', 'अभी', 'હમણાં'].includes(time);
@@ -445,99 +588,306 @@ export const PlantDoctorView: React.FC<PlantDoctorViewProps> = ({
     }
   };
 
-  // Text-to-Speech in the selected language
-  const speakText = (text: string) => {
-    if (!('speechSynthesis' in window)) {
-      alert(i18n.speechNotAvailable);
-      return;
-    }
-    const speechLang = currentLang === 'gu' ? 'gu-IN' : currentLang === 'hi' ? 'hi-IN' : 'en-IN';
-    const voices = window.speechSynthesis.getVoices();
-    const voice = voices.find((item) => item.lang.toLowerCase() === speechLang.toLowerCase());
-    if (!voice) {
-      alert(i18n.speechNotAvailable);
-      return;
-    }
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = speechLang;
-    utterance.voice = voice;
-    utterance.rate = 0.95;
-    window.speechSynthesis.speak(utterance);
+  const stopSpeech = () => {
+    cancelSpeechPlayback();
+    setVoiceFeedback(i18n.speechStopped);
   };
 
-  // Voice speech recognition in the selected language
+  const speakText = async (text: string, messageId: string) => {
+    if (speakingMessageId === messageId) {
+      stopSpeech();
+      return;
+    }
+    if (!text.trim()) {
+      setVoiceFeedback(i18n.speechNotAvailable);
+      return;
+    }
+
+    const requestId = ++speechRequestRef.current;
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    ttsAbortRef.current?.abort();
+    ttsAbortRef.current = null;
+    if (ttsAudioRef.current) {
+      ttsAudioRef.current.pause();
+      ttsAudioRef.current.removeAttribute('src');
+      ttsAudioRef.current.load();
+      ttsAudioRef.current = null;
+    }
+    if (ttsObjectUrlRef.current) {
+      URL.revokeObjectURL(ttsObjectUrlRef.current);
+      ttsObjectUrlRef.current = null;
+    }
+    setSpeakingMessageId(messageId);
+    setVoiceFeedback(i18n.speechPreparing);
+    const languageCode = currentLang === 'gu' ? 'gu-IN' : currentLang === 'hi' ? 'hi-IN' : 'en-IN';
+    const languagePrefix = languageCode.slice(0, 2).toLowerCase();
+    let voice: SpeechSynthesisVoice | undefined;
+    if ('speechSynthesis' in window) {
+      let voices = window.speechSynthesis.getVoices();
+      if (voices.length === 0) {
+        voices = await new Promise<SpeechSynthesisVoice[]>((resolve) => {
+          let settled = false;
+          const finish = () => {
+            if (settled) return;
+            settled = true;
+            window.speechSynthesis.removeEventListener('voiceschanged', finish);
+            resolve(window.speechSynthesis.getVoices());
+          };
+          window.speechSynthesis.addEventListener('voiceschanged', finish, { once: true });
+          window.setTimeout(finish, 2000);
+        });
+      }
+      if (requestId !== speechRequestRef.current) return;
+      if (voices.length === 0) {
+        voices = availableVoicesRef.current.length ? availableVoicesRef.current : availableVoices;
+      }
+      const languageVoices = voices.filter((item) => {
+        const voiceLanguage = item.lang.toLowerCase();
+        return voiceLanguage === languagePrefix || voiceLanguage.startsWith(`${languagePrefix}-`);
+      });
+      voice =
+        languageVoices.find((item) => item.lang.toLowerCase() === languageCode.toLowerCase()) ||
+        languageVoices[0];
+    }
+
+    const chunks = splitSpeechText(text);
+
+    if (voice && 'speechSynthesis' in window) {
+      try {
+        chunks.forEach((chunk, index) => {
+          const utterance = new SpeechSynthesisUtterance(chunk);
+          utterance.lang = languageCode;
+          utterance.voice = voice;
+          utterance.rate = 0.95;
+          utterance.onstart = () => {
+            if (requestId === speechRequestRef.current) {
+              speechSynthesisRef.current = utterance;
+              setVoiceFeedback(i18n.speechPlaying);
+            }
+          };
+          utterance.onend = () => {
+            if (requestId === speechRequestRef.current && index === chunks.length - 1) {
+              speechSynthesisRef.current = null;
+              setSpeakingMessageId(null);
+              setVoiceFeedback('');
+            }
+          };
+          utterance.onerror = () => {
+            if (requestId === speechRequestRef.current) {
+              speechSynthesisRef.current = null;
+              setSpeakingMessageId(null);
+              setVoiceFeedback(i18n.speechNotAvailable);
+            }
+          };
+          window.speechSynthesis.speak(utterance);
+        });
+      } catch {
+        speechSynthesisRef.current = null;
+        setSpeakingMessageId(null);
+        setVoiceFeedback(i18n.speechNotAvailable);
+      }
+      return;
+    }
+
+    const abortController = new AbortController();
+    ttsAbortRef.current = abortController;
+    try {
+      for (const chunk of chunks) {
+        const response = await fetch('/api/plant-doctor/speech', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          },
+          body: JSON.stringify({ text: chunk, lang: currentLang }),
+          signal: abortController.signal,
+        });
+        if (!response.ok) {
+          const error = (await response.json().catch(() => ({}))) as { code?: string };
+          if (requestId !== speechRequestRef.current) return;
+          setSpeakingMessageId(null);
+          setVoiceFeedback(
+            error.code === 'TTS_NOT_CONFIGURED'
+              ? i18n.speechServiceNotConfigured
+              : error.code === 'TTS_RATE_LIMIT'
+                ? i18n.speechRateLimited
+                : i18n.speechGenerationFailed,
+          );
+          return;
+        }
+        const audioUrl = URL.createObjectURL(await response.blob());
+        if (requestId !== speechRequestRef.current) {
+          URL.revokeObjectURL(audioUrl);
+          return;
+        }
+        ttsObjectUrlRef.current = audioUrl;
+        const audio = new Audio(audioUrl);
+        ttsAudioRef.current = audio;
+        await new Promise<void>((resolve, reject) => {
+          audio.onplay = () => {
+            if (requestId === speechRequestRef.current) setVoiceFeedback(i18n.speechPlaying);
+          };
+          audio.onended = () => resolve();
+          audio.onpause = () => resolve();
+          audio.onerror = () => reject(new Error('Audio playback failed.'));
+          audio.play().catch(reject);
+        });
+        if (ttsObjectUrlRef.current === audioUrl) {
+          URL.revokeObjectURL(audioUrl);
+          ttsObjectUrlRef.current = null;
+        }
+        if (requestId !== speechRequestRef.current) return;
+        if (ttsAudioRef.current === audio) ttsAudioRef.current = null;
+      }
+      if (requestId === speechRequestRef.current) {
+        setSpeakingMessageId(null);
+        setVoiceFeedback('');
+      }
+    } catch {
+      if (requestId !== speechRequestRef.current || abortController.signal.aborted) return;
+      setSpeakingMessageId(null);
+      setVoiceFeedback(i18n.speechGenerationFailed);
+    } finally {
+      if (ttsAbortRef.current === abortController) ttsAbortRef.current = null;
+    }
+  };
+
   const toggleVoiceRecording = () => {
-    if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-      alert(i18n.voiceNotSupported);
-      return;
-    }
-
     if (isRecording) {
+      recognitionCancelledRef.current = true;
       speechRecognitionRef.current?.stop();
-      setIsRecording(false);
+      setVoiceFeedback(i18n.voiceStopped);
       return;
     }
 
-    const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const speechWindow = window as SpeechRequestWindow;
+    const SpeechRec = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
+    if (!SpeechRec) {
+      setVoiceFeedback(i18n.voiceNotSupported);
+      return;
+    }
+
     const recognition = new SpeechRec();
     speechRecognitionRef.current = recognition;
     recognition.lang = currentLang === 'gu' ? 'gu-IN' : currentLang === 'hi' ? 'hi-IN' : 'en-IN';
-    recognition.interimResults = false;
+    recognition.interimResults = true;
+    recognition.continuous = false;
+    recognitionCancelledRef.current = false;
+    let receivedTranscript = false;
+    let recognitionFailed = false;
+    let recognitionStarted = false;
+    let lastTranscript = '';
 
     recognition.onstart = () => {
+      recognitionStarted = true;
+      if (recognitionStartTimeoutRef.current !== null) {
+        window.clearTimeout(recognitionStartTimeoutRef.current);
+        recognitionStartTimeoutRef.current = null;
+      }
       setIsRecording(true);
+      setVoiceFeedback(i18n.voiceListening);
     };
-
-    recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      setInputText(transcript);
+    recognition.onresult = (event) => {
+      const transcript = Array.from(event.results)
+        .filter((result) => result.isFinal)
+        .map((result) => result[0].transcript.trim())
+        .filter(Boolean)
+        .join(' ');
+      if (transcript && transcript !== lastTranscript) {
+        const addition = transcript.startsWith(lastTranscript)
+          ? transcript.slice(lastTranscript.length).trim()
+          : transcript;
+        lastTranscript = transcript;
+        receivedTranscript = true;
+        if (addition) {
+          setInputText((previous) => [previous.trim(), addition].filter(Boolean).join(' '));
+          setVoiceFeedback(i18n.voiceTranscriptReady);
+        }
+      } else {
+        setVoiceFeedback(i18n.voiceProcessing);
+      }
+    };
+    recognition.onerror = (event) => {
+      recognitionFailed = true;
+      if (recognitionStartTimeoutRef.current !== null) {
+        window.clearTimeout(recognitionStartTimeoutRef.current);
+        recognitionStartTimeoutRef.current = null;
+      }
       setIsRecording(false);
-      sendMessage(transcript);
+      setVoiceFeedback(
+        event.error === 'not-allowed' || event.error === 'service-not-allowed'
+          ? i18n.voicePermissionDenied
+          : i18n.voiceRecognitionFailed,
+      );
     };
-
-    recognition.onerror = (event: any) => {
-      setIsRecording(false);
-      const message = event?.error === 'not-allowed' || event?.error === 'service-not-allowed'
-        ? i18n.voicePermissionDenied
-        : i18n.voiceRecognitionFailed;
-      alert(message);
-    };
-
     recognition.onend = () => {
+      if (recognitionStartTimeoutRef.current !== null) {
+        window.clearTimeout(recognitionStartTimeoutRef.current);
+        recognitionStartTimeoutRef.current = null;
+      }
       setIsRecording(false);
       speechRecognitionRef.current = null;
+      if (!receivedTranscript && !recognitionFailed && !recognitionCancelledRef.current) {
+        setVoiceFeedback(i18n.voiceRecognitionFailed);
+      }
     };
 
     try {
+      setVoiceFeedback(i18n.voiceProcessing);
       recognition.start();
+      recognitionStartTimeoutRef.current = window.setTimeout(() => {
+        recognitionStartTimeoutRef.current = null;
+        if (!recognitionStarted && speechRecognitionRef.current === recognition) {
+          recognitionFailed = true;
+          recognition.stop();
+          speechRecognitionRef.current = null;
+          setIsRecording(false);
+          setVoiceFeedback(i18n.voiceRecognitionFailed);
+        }
+      }, 8000);
     } catch {
+      if (recognitionStartTimeoutRef.current !== null) {
+        window.clearTimeout(recognitionStartTimeoutRef.current);
+        recognitionStartTimeoutRef.current = null;
+      }
       setIsRecording(false);
       speechRecognitionRef.current = null;
-      alert(i18n.voiceRecognitionFailed);
+      setVoiceFeedback(i18n.voiceRecognitionFailed);
     }
   };
 
-  const sendMessage = async (textToSend: string, imageToSend?: string | null) => {
-    if (!textToSend.trim() && !imageToSend && !attachedImage) return;
+  const sendMessage = async (
+    textToSend: string,
+    imageToSend?: string | null,
+    isRetry = false,
+  ) => {
+    if (sendingRef.current || (!textToSend.trim() && !imageToSend && !attachedImage)) return;
 
     const query = textToSend.trim();
     const currentAttachedImage = imageToSend !== undefined ? imageToSend : attachedImage;
+    const submittedText = query || (currentAttachedImage ? i18n.userAttachedLeafText : '');
+    const requestLanguage = currentLang;
+    sendingRef.current = true;
+    setRequestError('');
+    setRetryPayload(null);
 
     const userMsg: Message = {
       id: `u-${Date.now()}`,
       sender: 'user',
-      text: query || (currentAttachedImage ? i18n.userAttachedLeafText : ''),
+      text: submittedText,
       time: i18n.justNow,
       imageUrl: currentAttachedImage || undefined,
       translations: {
         [currentLang]: {
-          text: query || (currentAttachedImage ? i18n.userAttachedLeafText : ''),
+          text: submittedText,
         },
       },
     };
 
-    setMessages((prev) => [...prev, userMsg]);
+    if (!isRetry) {
+      setMessages((prev) => [...prev, userMsg]);
+      messagesRef.current = [...messagesRef.current, userMsg];
+    }
     setInputText('');
     setAttachedImage(null);
     setIsLoading(true);
@@ -550,7 +900,14 @@ export const PlantDoctorView: React.FC<PlantDoctorViewProps> = ({
           ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
         },
         body: JSON.stringify({
-          messages: messages.map((m) => ({ sender: m.sender, text: m.text })),
+          messages: messagesRef.current
+            .filter((message, index, history) =>
+              isRetry && index === history.length - 1 && message.sender === 'user' && message.text === submittedText
+                ? false
+                : message.id !== userMsg.id,
+            )
+            .slice(-10)
+            .map((message) => ({ sender: message.sender, text: message.text })),
           userMessage: query,
           attachedImage: currentAttachedImage ? { base64: currentAttachedImage } : undefined,
           latestScanContext,
@@ -560,157 +917,57 @@ export const PlantDoctorView: React.FC<PlantDoctorViewProps> = ({
             districtName: localizedLocationName,
             growingLocation: userType === 'farmer' ? 'Field Plot' : 'Balcony / Terrace',
           },
-          lang: currentLang,
+          lang: requestLanguage,
         }),
       });
 
-      if (response.ok) {
-        const json = await response.json();
-        if (json.success && json.data) {
-          const doctorMsg: Message = {
-            id: `d-${Date.now()}`,
-            sender: 'doctor',
-            text: json.data.replyText,
-            time: i18n.justNow,
-            options: json.data.suggestedOptions,
-            recommendation: json.data.diagnosticInsight,
-            translations: {
-              [currentLang]: {
-                text: json.data.replyText,
-                options: json.data.suggestedOptions,
-                recommendation: json.data.diagnosticInsight,
-              },
-            },
-          };
-          setMessages((prev) => [...prev, doctorMsg]);
-          setIsLoading(false);
-          return;
-        }
+      const json = await response.json();
+      if (
+        !response.ok ||
+        !json?.success ||
+        typeof json?.data?.replyText !== 'string' ||
+        !json.data.replyText.trim()
+      ) {
+        throw new Error('DOCTOR_REQUEST_FAILED');
       }
 
-      // Offline fallback in pure selected language
-      handleOfflineDoctorReply(query);
-    } catch (e) {
-      console.warn('Network issue reaching /api/chat-plant-doctor. Using local fallback.', e);
-      handleOfflineDoctorReply(query);
+      const doctorMsg: Message = {
+        id: `d-${Date.now()}`,
+        sender: 'doctor',
+        text: json.data.replyText.trim(),
+        time: i18n.justNow,
+        options: Array.isArray(json.data.suggestedOptions)
+          ? json.data.suggestedOptions.filter((option: unknown) => typeof option === 'string')
+          : undefined,
+        recommendation:
+          json.data.diagnosticInsight && typeof json.data.diagnosticInsight === 'object'
+            ? json.data.diagnosticInsight
+            : undefined,
+        translations: {
+          [requestLanguage]: {
+            text: json.data.replyText.trim(),
+            options: Array.isArray(json.data.suggestedOptions)
+              ? json.data.suggestedOptions.filter((option: unknown) => typeof option === 'string')
+              : undefined,
+            recommendation: json.data.diagnosticInsight,
+          },
+        },
+      };
+      setMessages((prev) => [...prev, doctorMsg]);
+      messagesRef.current = [...messagesRef.current, doctorMsg];
+      setVoiceFeedback('');
+    } catch {
+      handleDoctorRequestFailure(query, currentAttachedImage || null);
     } finally {
+      sendingRef.current = false;
       setIsLoading(false);
     }
   };
 
   // Pure localized fallback without language mixing
-  const handleOfflineDoctorReply = (query: string) => {
-    const localizedCrop = cropDisplayName(currentLang, cropName);
-    const localizedLocation = localizedLocationName;
-    const isWater =
-      query.toLowerCase().includes('water') ||
-      query.includes('પાણી') ||
-      query.includes('સિંચાઈ') ||
-      query.includes('सिंचाई');
-    const isWhy =
-      query.toLowerCase().includes('why') ||
-      query.includes('કેમ') ||
-      query.includes('શા માટે') ||
-      query.includes('કારણ') ||
-      query.includes('क्यों') ||
-      query.includes('वजह');
-
-    let replyText = '';
-    let options: string[] = [];
-
-    if (latestScanContext) {
-      const pName = latestScanContext.plantName || cropName;
-      const pCond = latestScanContext.condition || 'Foliar Issue';
-      const pCauses =
-        Array.isArray(latestScanContext.possibleCauses) && latestScanContext.possibleCauses.length > 0
-          ? latestScanContext.possibleCauses.join(', ')
-          : currentLang === 'gu'
-          ? 'વાતાવરણીય ભેજ અથવા ફૂગના કારણે'
-          : currentLang === 'hi'
-          ? 'पर्यावरणीय नमी या फफूंद के कारण'
-          : 'environmental stress or fungal pathogens';
-
-      if (isWhy) {
-        replyText =
-          currentLang === 'gu'
-            ? `તમારા ${pName} માં "${pCond}" થવાનું મુખ્ય કારણ: ${pCauses}. પાંદડા પર લાંબા સમય સુધી પાણી રહેવું અને હવાની ઓછી અવરજવર આ સમસ્યા વધારે છે.`
-            : currentLang === 'hi'
-            ? `आपके ${pName} में "${pCond}" का मुख्य कारण: ${pCauses}। पत्तियों पर अधिक समय तक नमी रुकना और अपर्याप्त हवा इसे बढ़ावा देती है।`
-            : `Based on your scan of ${pName} with ${pCond}, this typically occurs due to: ${pCauses}. Lingering leaf moisture and crowded foliage create favorable conditions for this.`;
-        options =
-          currentLang === 'gu'
-            ? ['આ રોગ આગળ વધતો કેવી રીતે રોકવો?', 'લીમડાના તેલનો સ્પ્રે ક્યારે કરવો?']
-            : currentLang === 'hi'
-            ? ['इसे आगे फैलने से कैसे रोकें?', 'नीम तेल का स्प्रे कब करें?']
-            : ['How do I stop this from spreading?', 'When should I spray organic neem?'];
-      } else if (isWater) {
-        replyText =
-          currentLang === 'gu'
-            ? `${pName} (${pCond}) માટે સિંચાઈ નિયમ: પાંદડા ભીના ન થાય તે રીતે માત્ર કૂંડાં કે જમીનમાં નીચે પાણી આપો. સૂર્યોદય સમયે પાણી આપવું શ્રેષ્ઠ છે.`
-            : currentLang === 'hi'
-            ? `${pName} (${pCond}) हेतु सिंचाई नियम: पत्तियां गीली न हों, केवल जड़ में मिट्टी पर पानी दें। सुबह के समय हल्की सिंचाई सर्वोत्तम है।`
-            : `For ${pName} diagnosed with ${pCond}: Water strictly at the soil level. Keep the foliage completely dry to prevent pathogen spore germination.`;
-        options =
-          currentLang === 'gu'
-            ? ['શું માટીમાં ડ્રેનેજ બરાબર છે?', 'પાણી આપવાનો શ્રેષ્ઠ સમય કયો?']
-            : currentLang === 'hi'
-            ? ['क्या मिट्टी में जल निकासी ठीक है?', 'सिंचाई का सर्वोत्तम समय क्या है?']
-            : ['Is soil drainage adequate?', 'Best time to irrigate?'];
-      } else {
-        replyText =
-          currentLang === 'gu'
-            ? `તમારા ${pName} ના "${pCond}" સ્કેન સંદર્ભે: રોગગ્રસ્ત નીચેના પાંદડા તરત કાપો અને હવા ઉજાસ વધારો. પાંદડા પર સેન્દ્રિય લીમડાના અર્કનો છંટકાવ કરો.`
-            : currentLang === 'hi'
-            ? `आपके ${pName} के "${pCond}" स्कैन संदर्भ में: रोगग्रस्त निचली पत्तियों को तुरंत हटाएं और हवा का प्रवाह बढ़ाएं। पत्तियों पर जैविक नीम का छिड़काव करें।`
-            : `Regarding your scan for ${pName} with ${pCond}: Ensure affected lower leaves are sanitized and removed, and stake plants for better canopy aeration. What specific step would you like to verify?`;
-        options =
-          currentLang === 'gu'
-            ? ['શ્રેષ્ઠ દેશી ઉપચાર જણાવો', 'ખાતર આપવું કે નહીં?']
-            : currentLang === 'hi'
-            ? ['सर्वोत्तम जैविक उपचार बताएं', 'खाद देनी चाहिए या नहीं?']
-            : ['What is the best organic treatment?', 'Should I pause fertilization?'];
-      }
-    } else if (isWater) {
-      replyText =
-        currentLang === 'gu'
-          ? `તમારા ${localizedCrop} (${localizedLocation}) માટે સિંચાઈ સલાહ: પાંદડા પર સીધું પાણી ન છાંટવું. માત્ર થડ પાસે જમીનમાં સવારે ૭ થી ૯ વચ્ચે ભેજ જાળવવો.`
-          : currentLang === 'hi'
-          ? `आपके ${localizedCrop} (${localizedLocation}) के लिए सिंचाई सलाह: पत्तियों पर ऊपर से पानी न डालें। सुबह के समय केवल मिट्टी में हल्की सिंचाई करें।`
-          : `Irrigation guidance for your ${localizedCrop} in ${localizedLocation}: Withhold overhead sprinkler wetting. Drip irrigate early in the morning so foliage stays bone-dry.`;
-      options =
-        currentLang === 'gu'
-          ? ['શું માટીમાં ડ્રેનેજ બરાબર છે?', 'પાણી આપવાનો શ્રેષ્ઠ સમય કયો?']
-          : currentLang === 'hi'
-          ? ['क्या मिट्टी में जल निकासी ठीक है?', 'सिंचाई का सर्वोत्तम समय क्या है?']
-          : ['Is soil drainage adequate?', 'Best time for drip irrigation?'];
-    } else {
-      replyText =
-        currentLang === 'gu'
-          ? `મેં તમારી પૂછપરછ નોંધી છે. ${localizedCrop} (${localizedLocation}) ના સંદર્ભમાં, છોડ પર કોઈ કાળા ડાઘ, કરચલી કે જીવાત દેખાય છે?`
-          : currentLang === 'hi'
-          ? `मैंने आपका प्रश्न दर्ज किया है। ${localizedCrop} (${localizedLocation}) के संदर्भ में, क्या पत्तियों पर कोई धब्बे, सिकुड़न या कीट दिख रहे हैं?`
-          : `Understood. For your ${localizedCrop} in ${localizedLocation}, are you noticing leaf curling, chlorotic spots, or active sucking insects?`;
-      options =
-        currentLang === 'gu'
-          ? ['હા, કથ્થઈ ડાઘ છે', 'ના, માત્ર પાંદડા પીળા છે']
-          : currentLang === 'hi'
-          ? ['हाँ, भूरे धब्बे हैं', 'नहीं, केवल पत्तियां पीली हैं']
-          : ['Yes, brown spots visible', 'No, smooth yellowing only'];
-    }
-
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: `d-${Date.now()}`,
-        sender: 'doctor',
-        text: replyText,
-        time: i18n.justNow,
-        options,
-        translations: {
-          [currentLang]: { text: replyText, options },
-        },
-      },
-    ]);
+  const handleDoctorRequestFailure = (query: string, image: string | null = null) => {
+    setRequestError(i18n.errorConsultation);
+    setRetryPayload({ query, image });
   };
 
   return (
@@ -873,6 +1130,29 @@ export const PlantDoctorView: React.FC<PlantDoctorViewProps> = ({
         </button>
       </div>
 
+      {(voiceFeedback || requestError) && (
+        <div
+          role={requestError ? 'alert' : 'status'}
+          className={`mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2 text-xs ${
+            requestError
+              ? 'border-[#D96B5F]/40 bg-red-50 text-[#8F332B]'
+              : 'border-[#8FAF91]/40 bg-[#E8F1E7] text-[#245C43]'
+          }`}
+        >
+          <span>{requestError || voiceFeedback}</span>
+          {requestError && retryPayload && (
+            <button
+              type="button"
+              onClick={() => sendMessage(retryPayload.query, retryPayload.image, true)}
+              disabled={isLoading}
+              className="rounded-lg bg-[#245C43] px-3 py-1.5 font-bold text-white hover:bg-[#1a4431] disabled:opacity-50"
+            >
+              {i18n.retry}
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Conversation Messages Container */}
       <div className="bg-white rounded-3xl border border-[#8FAF91]/35 shadow-xs p-4 sm:p-6 mb-4 min-h-[380px] max-h-[500px] overflow-y-auto space-y-4">
         {messages.map((m) => {
@@ -921,11 +1201,25 @@ export const PlantDoctorView: React.FC<PlantDoctorViewProps> = ({
                 <span>{m.time}</span>
                 {isDoc && (
                   <button
-                    onClick={() => speakText(m.text)}
+                    onClick={() =>
+                      speakText(
+                        getSpeakableResponse(m, {
+                          diagnosis: i18n.speechDiagnosisLabel,
+                          confidence: i18n.speechConfidenceLabel,
+                          recommendation: i18n.speechRecommendationLabel,
+                        }),
+                        m.id,
+                      )
+                    }
                     className="p-1 hover:text-[#245C43] transition-colors cursor-pointer"
-                    title={i18n.readAloudTooltip}
+                    title={speakingMessageId === m.id ? i18n.actionStopVoice : i18n.readAloudTooltip}
+                    aria-label={speakingMessageId === m.id ? i18n.actionStopVoice : i18n.readAloudTooltip}
                   >
-                    <Volume2 className="w-3.5 h-3.5" />
+                    {speakingMessageId === m.id ? (
+                      <X className="w-3.5 h-3.5" />
+                    ) : (
+                      <Volume2 className="w-3.5 h-3.5" />
+                    )}
                   </button>
                 )}
               </div>

@@ -39,7 +39,7 @@ export const Logo: React.FC<LogoProps> = ({
     >
       {/* Precision Engineered Botanical Mark: Organic Leaf with Embedded Heartbeat Pulse Signal */}
       <div
-        className={`relative flex items-center justify-center rounded-xl transition-all duration-300 shadow-sm ${iconDimensions[size]} bg-[#245C43] text-white overflow-hidden`}
+        className={`relative flex shrink-0 items-center justify-center rounded-xl transition-all duration-300 shadow-sm ${iconDimensions[size]} bg-[#245C43] text-white overflow-hidden`}
         aria-hidden="true"
       >
         <svg
@@ -78,12 +78,12 @@ export const Logo: React.FC<LogoProps> = ({
       </div>
 
       {/* Brand Typography */}
-      <div className="flex flex-col">
-        <div className="flex items-center gap-1.5 leading-none">
-          <span className={`font-display ${textStyles[size]} ${textColor}`}>
+      <div className="flex min-w-0 flex-col">
+        <div className="flex items-baseline gap-1.5 whitespace-nowrap leading-none">
+          <span className={`font-display leading-none ${textStyles[size]} ${textColor}`}>
             PlantPulse
           </span>
-          <span className="text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-[#245C43] text-white">
+          <span className="inline-flex h-4 items-center justify-center rounded-md bg-[#245C43] px-1.5 text-[10px] font-black uppercase leading-none tracking-wider text-white">
             AI
           </span>
         </div>
